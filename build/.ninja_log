@@ -1,0 +1,27 @@
+# ninja log v7
+234	5796	7887770455310508	core/CMakeFiles/teleport_core.dir/src/security/token.cpp.obj	fa331a0e7e4bbe45
+243	6012	7887770455416925	core/CMakeFiles/teleport_core.dir/src/utils/uuid.cpp.obj	fce630268072f3cf
+204	6790	7887770455025856	core/CMakeFiles/teleport_core.dir/src/transfer/chunk_reader.cpp.obj	3674a21ad586e0a
+6013	8722	7887770513113316	core/CMakeFiles/teleport_core.dir/src/utils/sanitize.cpp.obj	85890e8c7188fde4
+213	11317	7887770455106029	core/CMakeFiles/teleport_core.dir/src/transfer/chunk_writer.cpp.obj	a0b25727f4c68121
+5800	12508	7887770510977461	core/CMakeFiles/teleport_core.dir/src/utils/logger.cpp.obj	586112e7662a6b5d
+152	15431	7887770454513821	core/CMakeFiles/teleport_core.dir/src/discovery/device_list.cpp.obj	faface35cb841973
+132	16424	7887770454306794	core/CMakeFiles/teleport_core.dir/src/discovery/discovery.cpp.obj	8d5a7196972fa99e
+194	17036	7887770454926062	core/CMakeFiles/teleport_core.dir/src/transfer/transfer_manager.cpp.obj	76fad8a13e65951f
+223	17563	7887770455206456	core/CMakeFiles/teleport_core.dir/src/transfer/stream_pool.cpp.obj	1ae4a52d88b12b75
+6791	20815	7887770520890700	cli/CMakeFiles/teleport_cli.dir/main.cpp.obj	82e1a1b31b26c0c8
+15432	21109	7887770607307961	cli/CMakeFiles/teleport_cli.dir/ui/progress.cpp.obj	9efa1ff43fe6f827
+8722	21541	7887770540206455	cli/CMakeFiles/teleport_cli.dir/commands/discover.cpp.obj	db3baf4ff64d8093
+76	21614	7887770453756379	core/CMakeFiles/teleport_core.dir/src/teleport.cpp.obj	ed98bb0608bdbb3b
+12508	21930	7887770578057152	cli/CMakeFiles/teleport_cli.dir/commands/receive.cpp.obj	468fb100c7ef9783
+16424	22232	7887770617221623	cli/CMakeFiles/teleport_cli.dir/ui/console.cpp.obj	f28c23979102fd9e
+11318	22238	7887770566157745	cli/CMakeFiles/teleport_cli.dir/commands/send.cpp.obj	640805007ed811a8
+105	23750	7887770454035628	core/CMakeFiles/teleport_core.dir/src/platform/pal.cpp.obj	73e5885e7f5a4731
+164	24780	7887770454610020	core/CMakeFiles/teleport_core.dir/src/control/control_server.cpp.obj	d21057d1c794da68
+174	24914	7887770454726629	core/CMakeFiles/teleport_core.dir/src/control/control_client.cpp.obj	79321ab05e77f2a9
+142	28275	7887770454402527	core/CMakeFiles/teleport_core.dir/src/discovery/udp_broadcaster.cpp.obj	fd20b3bff6ede856
+184	32339	7887770454824818	core/CMakeFiles/teleport_core.dir/src/control/protocol.cpp.obj	731431b8a8e4e4f
+32341	33299	7887770776397395	core/libteleport_core.a	351b381f3f6c82ef
+15	2431	7887773753151946	core/CMakeFiles/teleport_core.dir/src/discovery/discovery.cpp.obj	8d5a7196972fa99e
+2433	2697	7887773777326675	core/libteleport_core.a	351b381f3f6c82ef
+2697	2983	7887773779970719	cli/teleport.exe	877fefb977283b71

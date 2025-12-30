@@ -1,0 +1,134 @@
+[
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\teleport.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\teleport.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/teleport.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/teleport.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\platform\\pal.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\platform\\pal.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/platform/pal.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/platform/pal.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\discovery\\discovery.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\discovery\\discovery.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/discovery/discovery.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/discovery/discovery.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\discovery\\udp_broadcaster.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\discovery\\udp_broadcaster.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/discovery/udp_broadcaster.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/discovery/udp_broadcaster.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\discovery\\device_list.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\discovery\\device_list.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/discovery/device_list.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/discovery/device_list.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\control\\control_server.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\control\\control_server.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/control/control_server.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/control/control_server.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\control\\control_client.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\control\\control_client.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/control/control_client.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/control/control_client.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\control\\protocol.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\control\\protocol.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/control/protocol.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/control/protocol.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\transfer\\transfer_manager.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\transfer\\transfer_manager.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/transfer/transfer_manager.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/transfer/transfer_manager.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\transfer\\chunk_reader.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\transfer\\chunk_reader.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/transfer/chunk_reader.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/transfer/chunk_reader.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\transfer\\chunk_writer.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\transfer\\chunk_writer.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/transfer/chunk_writer.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/transfer/chunk_writer.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\transfer\\stream_pool.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\transfer\\stream_pool.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/transfer/stream_pool.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/transfer/stream_pool.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\security\\token.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\security\\token.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/security/token.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/security/token.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\utils\\uuid.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\utils\\uuid.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/utils/uuid.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/utils/uuid.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\utils\\logger.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\utils\\logger.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/utils/logger.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/utils/logger.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/core/src\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -o core\\CMakeFiles\\teleport_core.dir\\src\\utils\\sanitize.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\core\\src\\utils\\sanitize.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/core/src/utils/sanitize.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir/src/utils/sanitize.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/cli\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli\\CMakeFiles\\teleport_cli.dir\\main.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\cli\\main.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/cli/main.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir/main.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/cli\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli\\CMakeFiles\\teleport_cli.dir\\commands\\discover.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\cli\\commands\\discover.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/cli/commands/discover.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir/commands/discover.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/cli\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli\\CMakeFiles\\teleport_cli.dir\\commands\\send.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\cli\\commands\\send.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/cli/commands/send.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir/commands/send.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/cli\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli\\CMakeFiles\\teleport_cli.dir\\commands\\receive.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\cli\\commands\\receive.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/cli/commands/receive.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir/commands/receive.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/cli\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli\\CMakeFiles\\teleport_cli.dir\\ui\\progress.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\cli\\ui\\progress.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/cli/ui/progress.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir/ui/progress.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/cli\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli\\CMakeFiles\\teleport_cli.dir\\ui\\console.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\cli\\ui\\console.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/cli/ui/console.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir/ui/console.cpp.obj"
+}
+]

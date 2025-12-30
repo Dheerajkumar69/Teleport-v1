@@ -1,0 +1,14 @@
+# Target labels
+ json-populate
+# Source files and their labels
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/CMakeFiles/json-populate
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/CMakeFiles/json-populate.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/CMakeFiles/json-populate-complete.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-build.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-configure.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-download.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-install.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-mkdir.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-patch.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-test.rule
+D:/CODES/actual projects/Teleport/build/_deps/json-subbuild/json-populate-prefix/src/json-populate-stamp/json-populate-update.rule
