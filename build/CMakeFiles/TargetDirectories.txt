@@ -28,3 +28,11 @@ D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/list_install_components.d
 D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/install.dir
 D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/install/local.dir
 D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/install/strip.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/TeleportUI.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/test.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/edit_cache.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/rebuild_cache.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/list_install_components.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/install.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/install/local.dir
+D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/install/strip.dir

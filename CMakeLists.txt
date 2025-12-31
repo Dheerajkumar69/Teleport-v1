@@ -50,9 +50,17 @@ find_package(GTest CONFIG QUIET)
 # Enable testing
 enable_testing()
 
+# Build options
+option(TELEPORT_BUILD_DESKTOP "Build desktop UI application" ON)
+
 # Subdirectories
 add_subdirectory(core)
 add_subdirectory(cli)
+
+# Desktop UI (Windows only)
+if(WIN32 AND TELEPORT_BUILD_DESKTOP)
+    add_subdirectory(desktop)
+endif()
 
 # Install targets
 install(TARGETS teleport_core teleport_cli

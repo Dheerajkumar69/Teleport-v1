@@ -36,6 +36,7 @@ std::string ResumeManager::get_state_path(
 
 bool ResumeManager::save(const ResumeState& state) {
     std::string path = get_state_path(state.file_name, state.sender_id);
+    std::string temp_path = path + ".tmp";  // Write to temp file first
     
     ResumeState s = state;
     s.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -44,14 +45,31 @@ bool ResumeManager::save(const ResumeState& state) {
     
     auto data = serialize_resume_state(s);
     
-    std::ofstream file(path, std::ios::binary);
+    // Write to temp file first (atomic pattern)
+    std::ofstream file(temp_path, std::ios::binary);
     if (!file) {
-        LOG_ERROR("Failed to save resume state to ", path);
+        LOG_ERROR("Failed to create temp resume state file: ", temp_path);
         return false;
     }
     
     file.write(reinterpret_cast<const char*>(data.data()), data.size());
+    file.flush();  // Ensure data is flushed to disk
     file.close();
+    
+    if (!file) {
+        LOG_ERROR("Failed to write resume state to ", temp_path);
+        fs::remove(temp_path);  // Cleanup on failure
+        return false;
+    }
+    
+    // Atomic rename: temp -> final (prevents corruption on crash)
+    try {
+        fs::rename(temp_path, path);
+    } catch (const std::exception& e) {
+        LOG_ERROR("Failed to rename resume state file: ", e.what());
+        fs::remove(temp_path);
+        return false;
+    }
     
     LOG_DEBUG("Saved resume state: ", state.file_name, 
               " (", state.received_chunks.size(), "/", state.total_chunks, " chunks)");

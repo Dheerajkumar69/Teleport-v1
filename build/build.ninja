@@ -686,7 +686,363 @@ build cli/CMakeFiles/install/strip.util: CUSTOM_COMMAND cli/all
 build cli/install/strip: phony cli/CMakeFiles/install/strip.util
 
 # =============================================================================
+# Write statements declared in CMakeLists.txt:
+# D:/CODES/actual projects/Teleport/CMakeLists.txt
+# =============================================================================
+
+# =============================================================================
+# Object build statements for EXECUTABLE target TeleportUI
+
+
+#############################################
+# Order-only phony target for TeleportUI
+
+build cmake_object_order_depends_target_TeleportUI: phony || cmake_object_order_depends_target_teleport_core
+
+build desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/main.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\main.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/Application.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\Application.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/TeleportBridge.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\TeleportBridge.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/Theme.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/Theme.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\Theme.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/views/DiscoverView.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\views\DiscoverView.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\views
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/views/SendView.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\views\SendView.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\views
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/views/ReceiveView.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\views\ReceiveView.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\views
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/views/TransfersView.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\views\TransfersView.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\views
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/components/DeviceCard.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\components\DeviceCard.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\components
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/components/TransferProgress.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/components/TransferProgress.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\components\TransferProgress.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\components
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/components/FileDropZone.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/components/FileDropZone.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\components\FileDropZone.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\components
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/src/components/Animations.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/components/Animations.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\components\Animations.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\components
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/imgui.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/imgui.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\imgui.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_demo.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/imgui_demo.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\imgui_demo.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_draw.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/imgui_draw.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\imgui_draw.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_tables.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/imgui_tables.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\imgui_tables.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_widgets.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/imgui_widgets.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\imgui_widgets.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_win32.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/backends/imgui_impl_win32.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\backends\imgui_impl_win32.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui\backends
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_dx11.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/imgui/backends/imgui_impl_dx11.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\imgui\backends\imgui_impl_dx11.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\imgui\backends
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+build desktop/CMakeFiles/TeleportUI.dir/resources/app.rc.obj: RC_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/resources/app.rc || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\resources\app.rc.obj.d
+  INCLUDES = -I "D:/CODES/actual projects/Teleport/desktop/imgui" -I "D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I "D:/CODES/actual projects/Teleport/desktop/src" -I "D:/CODES/actual projects/Teleport/core/include" -I "D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\resources
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target TeleportUI
+
+
+#############################################
+# Link the executable desktop\Teleport.exe
+
+build desktop/Teleport.exe: CXX_EXECUTABLE_LINKER__TeleportUI_Release desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/Theme.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/TransferProgress.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/FileDropZone.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/Animations.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_demo.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_draw.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_tables.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_widgets.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_win32.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_dx11.cpp.obj desktop/CMakeFiles/TeleportUI.dir/resources/app.rc.obj | core/libteleport_core.a || core/libteleport_core.a
+  CONFIG = Release
+  FLAGS = -O3 -DNDEBUG
+  LINK_FLAGS = -mwindows
+  LINK_LIBRARIES = core/libteleport_core.a  -ld3d11  -ldxgi  -ld3dcompiler  -ldwmapi  -luxtheme  -lComctl32  -lShlwapi  -lws2_32  -liphlpapi  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  POST_BUILD = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\cmake.exe -E copy_directory "D:/CODES/actual projects/Teleport/desktop/resources/fonts" "D:/CODES/actual projects/Teleport/build/desktop/fonts""
+  PRE_LINK = cd .
+  TARGET_COMPILE_PDB = desktop\CMakeFiles\TeleportUI.dir\
+  TARGET_FILE = desktop\Teleport.exe
+  TARGET_IMPLIB = desktop\libTeleport.dll.a
+  TARGET_PDB = desktop\Teleport.pdb
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
+
+#############################################
+# Utility command for test
+
+build desktop/CMakeFiles/test.util: CUSTOM_COMMAND
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\ctest.exe "
+  DESC = Running tests...
+  pool = console
+  restat = 1
+
+build desktop/test: phony desktop/CMakeFiles/test.util
+
+
+#############################################
+# Utility command for edit_cache
+
+build desktop/CMakeFiles/edit_cache.util: CUSTOM_COMMAND
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\cmake.exe -E echo "No interactive CMake dialog available.""
+  DESC = No interactive CMake dialog available...
+  restat = 1
+
+build desktop/edit_cache: phony desktop/CMakeFiles/edit_cache.util
+
+
+#############################################
+# Utility command for rebuild_cache
+
+build desktop/CMakeFiles/rebuild_cache.util: CUSTOM_COMMAND
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\cmake.exe --regenerate-during-build -S"D:\CODES\actual projects\Teleport" -B"D:\CODES\actual projects\Teleport\build""
+  DESC = Running CMake to regenerate build system...
+  pool = console
+  restat = 1
+
+build desktop/rebuild_cache: phony desktop/CMakeFiles/rebuild_cache.util
+
+
+#############################################
+# Utility command for list_install_components
+
+build desktop/list_install_components: phony
+
+
+#############################################
+# Utility command for install
+
+build desktop/CMakeFiles/install.util: CUSTOM_COMMAND desktop/all
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\cmake.exe -P cmake_install.cmake"
+  DESC = Install the project...
+  pool = console
+  restat = 1
+
+build desktop/install: phony desktop/CMakeFiles/install.util
+
+
+#############################################
+# Utility command for install/local
+
+build desktop/CMakeFiles/install/local.util: CUSTOM_COMMAND desktop/all
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\cmake.exe -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake"
+  DESC = Installing only the local directory...
+  pool = console
+  restat = 1
+
+build desktop/install/local: phony desktop/CMakeFiles/install/local.util
+
+
+#############################################
+# Utility command for install/strip
+
+build desktop/CMakeFiles/install/strip.util: CUSTOM_COMMAND desktop/all
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D "D:\CODES\actual projects\Teleport\build\desktop" && C:\msys64\ucrt64\bin\cmake.exe -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake"
+  DESC = Installing the project stripped...
+  pool = console
+  restat = 1
+
+build desktop/install/strip: phony desktop/CMakeFiles/install/strip.util
+
+# =============================================================================
 # Target aliases.
+
+build Teleport.exe: phony desktop/Teleport.exe
+
+build TeleportUI: phony desktop/Teleport.exe
 
 build libteleport_core.a: phony core/libteleport_core.a
 
@@ -704,7 +1060,7 @@ build teleport_core: phony core/libteleport_core.a
 #############################################
 # Folder: D:/CODES/actual projects/Teleport/build
 
-build all: phony _deps/json-build/all core/all cli/all
+build all: phony _deps/json-build/all core/all cli/all desktop/all
 
 # =============================================================================
 
@@ -728,20 +1084,27 @@ build cli/all: phony cli/teleport.exe
 build core/all: phony core/libteleport_core.a
 
 # =============================================================================
+
+#############################################
+# Folder: D:/CODES/actual projects/Teleport/build/desktop
+
+build desktop/all: phony desktop/Teleport.exe
+
+# =============================================================================
 # Built-in targets
 
 
 #############################################
 # Re-run CMake if any of its inputs changed.
 
-build build.ninja D$:/CODES/actual$ projects/Teleport/build/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/_deps/json-build/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/core/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/cli/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/CTestTestfile.cmake D$:/CODES/actual$ projects/Teleport/build/core/CTestTestfile.cmake D$:/CODES/actual$ projects/Teleport/build/cli/CTestTestfile.cmake: RERUN_CMAKE | C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompilerABI.cpp C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCommonLanguageInclude.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCompilerIdDetection.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeFindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeGenericSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeInitializeConfigs.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeLanguageInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeNinjaFindMake.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakePackageConfigHelpers.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystem.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCompilerCommon.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-CXXImportStd.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-FindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject/shared_internal_commands.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent/CMakeLists.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/GNUInstallDirs.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/FeatureTesting.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Determine-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX-ABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Initialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-windres.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/WindowsPaths.cmake C$:/msys64/ucrt64/share/cmake/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.1/CMakeCXXCompiler.cmake CMakeFiles/4.2.1/CMakeRCCompiler.cmake CMakeFiles/4.2.1/CMakeSystem.cmake D$:/CODES/actual$ projects/Teleport/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/cli/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/core/CMakeLists.txt _deps/json-src/CMakeLists.txt _deps/json-src/cmake/config.cmake.in _deps/json-src/cmake/nlohmann_jsonConfigVersion.cmake.in _deps/json-src/cmake/pkg-config.pc.in
+build build.ninja D$:/CODES/actual$ projects/Teleport/build/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/_deps/json-build/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/core/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/cli/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/desktop/cmake_install.cmake D$:/CODES/actual$ projects/Teleport/build/CTestTestfile.cmake D$:/CODES/actual$ projects/Teleport/build/core/CTestTestfile.cmake D$:/CODES/actual$ projects/Teleport/build/cli/CTestTestfile.cmake D$:/CODES/actual$ projects/Teleport/build/desktop/CTestTestfile.cmake: RERUN_CMAKE | C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompilerABI.cpp C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCommonLanguageInclude.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCompilerIdDetection.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeFindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeGenericSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeInitializeConfigs.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeLanguageInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeNinjaFindMake.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakePackageConfigHelpers.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystem.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCompilerCommon.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-CXXImportStd.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-FindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject/shared_internal_commands.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent/CMakeLists.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/GNUInstallDirs.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/FeatureTesting.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Determine-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX-ABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Initialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-windres.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/WindowsPaths.cmake C$:/msys64/ucrt64/share/cmake/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.1/CMakeCXXCompiler.cmake CMakeFiles/4.2.1/CMakeRCCompiler.cmake CMakeFiles/4.2.1/CMakeSystem.cmake D$:/CODES/actual$ projects/Teleport/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/cli/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/core/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/desktop/CMakeLists.txt _deps/json-src/CMakeLists.txt _deps/json-src/cmake/config.cmake.in _deps/json-src/cmake/nlohmann_jsonConfigVersion.cmake.in _deps/json-src/cmake/pkg-config.pc.in
   pool = console
 
 
 #############################################
 # A missing CMake input file is not an error.
 
-build C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompilerABI.cpp C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCommonLanguageInclude.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCompilerIdDetection.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeFindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeGenericSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeInitializeConfigs.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeLanguageInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeNinjaFindMake.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakePackageConfigHelpers.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystem.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCompilerCommon.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-CXXImportStd.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-FindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject/shared_internal_commands.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent/CMakeLists.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/GNUInstallDirs.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/FeatureTesting.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Determine-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX-ABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Initialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-windres.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/WindowsPaths.cmake C$:/msys64/ucrt64/share/cmake/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.1/CMakeCXXCompiler.cmake CMakeFiles/4.2.1/CMakeRCCompiler.cmake CMakeFiles/4.2.1/CMakeSystem.cmake D$:/CODES/actual$ projects/Teleport/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/cli/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/core/CMakeLists.txt _deps/json-src/CMakeLists.txt _deps/json-src/cmake/config.cmake.in _deps/json-src/cmake/nlohmann_jsonConfigVersion.cmake.in _deps/json-src/cmake/pkg-config.pc.in: phony
+build C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXCompilerABI.cpp C$:/msys64/ucrt64/share/cmake/Modules/CMakeCXXInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCommonLanguageInclude.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeCompilerIdDetection.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeDetermineSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeFindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeGenericSystem.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeInitializeConfigs.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeLanguageInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeNinjaFindMake.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakePackageConfigHelpers.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCCompiler.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeRCInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystem.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCXXCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestCompilerCommon.cmake C$:/msys64/ucrt64/share/cmake/Modules/CMakeTestRCCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-CXXImportStd.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU-FindBinUtils.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject.cmake C$:/msys64/ucrt64/share/cmake/Modules/ExternalProject/shared_internal_commands.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent.cmake C$:/msys64/ucrt64/share/cmake/Modules/FetchContent/CMakeLists.cmake.in C$:/msys64/ucrt64/share/cmake/Modules/GNUInstallDirs.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake C$:/msys64/ucrt64/share/cmake/Modules/Internal/FeatureTesting.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Linker/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Determine-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX-ABI.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU-CXX.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-GNU.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-Initialize.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows-windres.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/Windows.cmake C$:/msys64/ucrt64/share/cmake/Modules/Platform/WindowsPaths.cmake C$:/msys64/ucrt64/share/cmake/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.1/CMakeCXXCompiler.cmake CMakeFiles/4.2.1/CMakeRCCompiler.cmake CMakeFiles/4.2.1/CMakeSystem.cmake D$:/CODES/actual$ projects/Teleport/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/cli/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/core/CMakeLists.txt D$:/CODES/actual$ projects/Teleport/desktop/CMakeLists.txt _deps/json-src/CMakeLists.txt _deps/json-src/cmake/config.cmake.in _deps/json-src/cmake/nlohmann_jsonConfigVersion.cmake.in _deps/json-src/cmake/pkg-config.pc.in: phony
 
 
 #############################################

@@ -88,7 +88,7 @@ public:
         
         // Source location - ALWAYS included for traceability
         if (m_show_source) {
-            oss << " (" << extract_filename(file) << ":" << line << ")";
+            oss << " (" << extract_filename(file) << ":" << line << " " << func << ")";
         }
         
         oss << " ";

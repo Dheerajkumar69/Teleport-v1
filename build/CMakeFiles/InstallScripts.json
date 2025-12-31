@@ -4,7 +4,8 @@
 		"D:/CODES/actual projects/Teleport/build/cmake_install.cmake",
 		"D:/CODES/actual projects/Teleport/build/_deps/json-build/cmake_install.cmake",
 		"D:/CODES/actual projects/Teleport/build/core/cmake_install.cmake",
-		"D:/CODES/actual projects/Teleport/build/cli/cmake_install.cmake"
+		"D:/CODES/actual projects/Teleport/build/cli/cmake_install.cmake",
+		"D:/CODES/actual projects/Teleport/build/desktop/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

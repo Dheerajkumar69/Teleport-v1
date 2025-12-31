@@ -148,9 +148,13 @@ inline bool validate_ipv4(const std::string& ip) {
 
 /**
  * @brief Validate a port number
+ * @param port Port to validate
+ * @param allow_privileged Allow privileged ports (< 1024), default false
  */
-inline bool validate_port(uint16_t port) {
-    return port > 0 && port <= 65535;
+inline bool validate_port(uint16_t port, bool allow_privileged = true) {
+    if (port == 0) return false;
+    if (!allow_privileged && port < 1024) return false;
+    return true;  // uint16_t max is already 65535
 }
 
 /**

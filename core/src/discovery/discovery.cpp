@@ -10,6 +10,10 @@
 #include "utils/logger.hpp"
 #include "platform/pal.hpp"
 
+#ifdef _WIN32
+#include <iphlpapi.h>
+#endif
+
 namespace teleport {
 
 Config Config::with_defaults() {
@@ -138,10 +142,33 @@ void DiscoveryManager::expiration_loop() {
 }
 
 std::string DiscoveryManager::detect_hotspot_gateway() {
-    // Placeholder: Hotspot gateway detection for Phase 3
-    // For now, return empty string (no hotspot mode)
-    // Full implementation would check network interface for hotspot patterns
-    return "";
+#ifdef _WIN32
+    // Windows implementation using IP Helper API
+    // Check for common hotspot gateway patterns (192.168.43.x for Android, 172.20.10.x for iOS)
+    ULONG size = 0;
+    GetAdaptersInfo(nullptr, &size);
+    if (size == 0) return "";
+    
+    std::vector<uint8_t> buffer(size);
+    PIP_ADAPTER_INFO adapters = reinterpret_cast<PIP_ADAPTER_INFO>(buffer.data());
+    
+    if (GetAdaptersInfo(adapters, &size) != NO_ERROR) {
+        return "";
+    }
+    
+    for (PIP_ADAPTER_INFO adapter = adapters; adapter; adapter = adapter->Next) {
+        std::string gateway = adapter->GatewayList.IpAddress.String;
+        
+        // Check for common mobile hotspot patterns
+        if (gateway.find("192.168.43.") == 0 ||   // Android hotspot
+            gateway.find("172.20.10.") == 0 ||    // iOS hotspot  
+            gateway.find("192.168.137.") == 0) {  // Windows hotspot
+            LOG_DEBUG("Detected hotspot gateway: ", gateway);
+            return gateway;
+        }
+    }
+#endif
+    return "";  // No hotspot detected
 }
 
 } // namespace teleport

@@ -7,3 +7,4 @@
 subdirs("_deps/json-build")
 subdirs("core")
 subdirs("cli")
+subdirs("desktop")

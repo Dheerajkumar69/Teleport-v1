@@ -1,0 +1,39 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "msvc-x64-Release",
+      "displayName": "MSVC x64 Release",
+      "description": "Configure for Visual Studio 2022 (x64, Release)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "nmake",
+      "displayName": "NMake Makefiles (MSVC)",
+      "description": "Configure using NMake Makefiles (requires MSVC toolchain in PATH)",
+      "generator": "NMake Makefiles",
+      "binaryDir": "${sourceDir}/build/nmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msvc-x64-Release",
+      "configurePreset": "msvc-x64-Release",
+      "description": "Build using MSVC x64 Release preset"
+    },
+    {
+      "name": "nmake",
+      "configurePreset": "nmake",
+      "description": "Build using NMake preset"
+    }
+  ]
+}

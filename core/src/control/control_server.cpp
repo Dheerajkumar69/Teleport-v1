@@ -12,6 +12,7 @@
 // Security limits
 static constexpr size_t MAX_FILES_PER_TRANSFER = 10000;
 static constexpr uint64_t MAX_TOTAL_SIZE = 100ULL * 1024 * 1024 * 1024; // 100 GB
+static constexpr int MAX_CONNECTIONS_PER_SECOND = 10;  // Rate limiting
 
 namespace teleport {
 
@@ -105,7 +106,17 @@ void ControlServer::stop() {
 }
 
 void ControlServer::accept_loop() {
+    int connections_this_second = 0;
+    auto last_reset = std::chrono::steady_clock::now();
+    
     while (m_running.load()) {
+        // Rate limiting: reset counter every second
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - last_reset).count() >= 1) {
+            connections_this_second = 0;
+            last_reset = now;
+        }
+        
         m_server_socket->set_recv_timeout(1000);
         
         auto result = m_server_socket->accept();
@@ -113,6 +124,14 @@ void ControlServer::accept_loop() {
             // Timeout or shutdown
             continue;
         }
+        
+        // Rate limiting check
+        if (connections_this_second >= MAX_CONNECTIONS_PER_SECOND) {
+            LOG_WARN("Rate limit exceeded, dropping connection");
+            result.value()->close();
+            continue;
+        }
+        connections_this_second++;
         
         auto client = std::move(*result);
         LOG_INFO("Incoming connection from ", client->remote_address().to_string());
@@ -155,6 +174,27 @@ void ControlServer::handle_connection(std::unique_ptr<pal::TcpSocket> client) {
             }
             
             auto file_list = FileListMessage::from_json(msg_result.value().payload);
+            
+            // SECURITY: Enforce transfer limits (M3+M4 fix)
+            if (file_list.files.size() > MAX_FILES_PER_TRANSFER) {
+                LOG_WARN("Transfer rejected: too many files (", file_list.files.size(), " > ", MAX_FILES_PER_TRANSFER, ")");
+                AcceptRejectMessage reject_msg;
+                reject_msg.accepted = false;
+                reject_msg.reason = "Too many files";
+                writer.write(ControlMessage::reject(reject_msg));
+                final_error = TELEPORT_ERROR_INVALID_ARGUMENT;
+                goto cleanup;
+            }
+            
+            if (file_list.total_size > MAX_TOTAL_SIZE) {
+                LOG_WARN("Transfer rejected: size limit exceeded (", file_list.total_size, " > ", MAX_TOTAL_SIZE, ")");
+                AcceptRejectMessage reject_msg;
+                reject_msg.accepted = false;
+                reject_msg.reason = "Transfer size exceeds limit";
+                writer.write(ControlMessage::reject(reject_msg));
+                final_error = TELEPORT_ERROR_INVALID_ARGUMENT;
+                goto cleanup;
+            }
             
             // Build transfer info
             IncomingTransfer transfer;
