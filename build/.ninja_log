@@ -61,3 +61,10 @@
 15380	17251	7888860875667987	desktop/Teleport.exe	72cc81c886e868f3
 68	3297	7888864163245669	desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj	8036e35e9204c63f
 3301	3961	7888864195572308	desktop/Teleport.exe	72cc81c886e868f3
+39	2416	7888869007495114	cli/CMakeFiles/teleport_cli.dir/ui/console.cpp.obj	563f63fe20772ed1
+34	2611	7888869007440641	cli/CMakeFiles/teleport_cli.dir/ui/progress.cpp.obj	e563e5276d83b903
+8	2810	7888869007210872	cli/CMakeFiles/teleport_cli.dir/main.cpp.obj	6edee1b3a6173814
+16	3069	7888869007261595	cli/CMakeFiles/teleport_cli.dir/commands/discover.cpp.obj	6ba212179d01b3e1
+27	3165	7888869007390513	cli/CMakeFiles/teleport_cli.dir/commands/receive.cpp.obj	77f3a148b938833d
+22	3336	7888869007329344	cli/CMakeFiles/teleport_cli.dir/commands/send.cpp.obj	e6ca098aea898bdf
+3336	3652	7888869040468826	cli/teleport.exe	162eb7d1f4907eec
