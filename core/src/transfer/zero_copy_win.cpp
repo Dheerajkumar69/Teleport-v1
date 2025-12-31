@@ -4,7 +4,7 @@
  */
 
 #include "zero_copy.hpp"
-#include "transfer/chunk.hpp"
+#include "teleport/types.h"
 #include "utils/logger.hpp"
 
 #ifdef _WIN32

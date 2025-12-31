@@ -9,6 +9,9 @@
 #ifndef TELEPORT_PARALLEL_TRANSFER_HPP
 #define TELEPORT_PARALLEL_TRANSFER_HPP
 
+// This file is Windows-only for now due to PAL dependencies
+#ifdef _WIN32
+
 #include <vector>
 #include <atomic>
 #include <mutex>
@@ -19,7 +22,6 @@
 #include <unordered_set>
 #include <unordered_map>
 #include "platform/pal.hpp"
-#include "transfer/chunk.hpp"
 #include "teleport/types.h"
 
 namespace teleport {
@@ -236,5 +238,7 @@ private:
 };
 
 } // namespace teleport
+
+#endif // _WIN32
 
 #endif // TELEPORT_PARALLEL_TRANSFER_HPP
