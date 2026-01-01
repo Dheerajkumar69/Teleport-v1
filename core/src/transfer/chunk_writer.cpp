@@ -81,7 +81,8 @@ std::vector<uint32_t> ChunkWriter::missing_chunks() const {
 }
 
 bool ChunkWriter::is_complete() const {
-    return m_received_chunks.size() == m_total_chunks;
+    // SECURITY: Explicit cast to avoid size_t vs uint32_t comparison warning
+    return static_cast<uint32_t>(m_received_chunks.size()) == m_total_chunks;
 }
 
 Result<void> ChunkWriter::finalize() {

@@ -136,9 +136,16 @@ std::string get_primary_local_ip() {
     // Then 172.16-31.x.x
     for (const auto& ip : ips) {
         if (ip.substr(0, 4) == "172.") {
-            int second = std::stoi(ip.substr(4, ip.find('.', 4) - 4));
-            if (second >= 16 && second <= 31) {
-                return ip;
+            try {
+                size_t dot_pos = ip.find('.', 4);
+                if (dot_pos == std::string::npos || dot_pos <= 4) continue;
+                int second = std::stoi(ip.substr(4, dot_pos - 4));
+                if (second >= 16 && second <= 31) {
+                    return ip;
+                }
+            } catch (const std::exception&) {
+                // SECURITY: Skip malformed IP addresses instead of crashing
+                continue;
             }
         }
     }
@@ -673,7 +680,11 @@ bool file_exists(const std::string& path) {
 uint64_t file_size(const std::string& path) {
     try {
         return std::filesystem::file_size(path);
-    } catch (...) {
+    } catch (const std::filesystem::filesystem_error& e) {
+        // SECURITY: Log specific filesystem errors for debugging
+        // (Logger not available in PAL, so just return 0)
+        return 0;
+    } catch (const std::exception&) {
         return 0;
     }
 }

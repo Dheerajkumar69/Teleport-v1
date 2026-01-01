@@ -46,7 +46,9 @@ ControlMessageType message_type_from_string(const std::string& s) {
     if (s == "RESUME_REQUEST") return ControlMessageType::ResumeRequest;
     if (s == "COMPLETE") return ControlMessageType::Complete;
     if (s == "ERROR") return ControlMessageType::Error;
-    throw std::runtime_error("Unknown message type: " + s);
+    // SECURITY: Don't throw on unknown message - log and return Error type
+    LOG_WARN("Unknown message type received: ", s);
+    return ControlMessageType::Error;
 }
 
 /* ============================================================================

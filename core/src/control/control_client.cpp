@@ -374,9 +374,14 @@ Result<void> ControlClient::transfer_file(const FileInfo& file) {
         auto elapsed = std::chrono::duration_cast<Milliseconds>(now - m_stats.start_time).count();
         if (elapsed > 0) {
             m_stats.speed_bps = (m_stats.bytes_transferred * 1000.0) / elapsed;
-            m_stats.eta_seconds = static_cast<int32_t>(
-                (m_stats.bytes_total - m_stats.bytes_transferred) / m_stats.speed_bps
-            );
+            // SECURITY: Guard against division by zero
+            if (m_stats.speed_bps > 0.0) {
+                m_stats.eta_seconds = static_cast<int32_t>(
+                    (m_stats.bytes_total - m_stats.bytes_transferred) / m_stats.speed_bps
+                );
+            } else {
+                m_stats.eta_seconds = -1;  // Unknown
+            }
         }
         
         if (m_on_progress) {

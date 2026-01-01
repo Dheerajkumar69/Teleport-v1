@@ -9,10 +9,28 @@
 #include "utils/sanitize.hpp"
 #include "security/token.hpp"
 
+#ifdef TELEPORT_WINDOWS
+#include <fileapi.h>
+#endif
+
 // Security limits
 static constexpr size_t MAX_FILES_PER_TRANSFER = 10000;
 static constexpr uint64_t MAX_TOTAL_SIZE = 100ULL * 1024 * 1024 * 1024; // 100 GB
 static constexpr int MAX_CONNECTIONS_PER_SECOND = 10;  // Rate limiting
+
+// SECURITY: Get available disk space for a path
+static uint64_t get_available_disk_space(const std::string& path) {
+#ifdef TELEPORT_WINDOWS
+    ULARGE_INTEGER free_bytes;
+    if (GetDiskFreeSpaceExA(path.c_str(), &free_bytes, nullptr, nullptr)) {
+        return free_bytes.QuadPart;
+    }
+    return 0;  // Unable to determine
+#else
+    // POSIX implementation (future)
+    return UINT64_MAX;  // Assume sufficient space on non-Windows
+#endif
+}
 
 namespace teleport {
 
@@ -194,6 +212,23 @@ void ControlServer::handle_connection(std::unique_ptr<pal::TcpSocket> client) {
                 writer.write(ControlMessage::reject(reject_msg));
                 final_error = TELEPORT_ERROR_INVALID_ARGUMENT;
                 goto cleanup;
+            }
+            
+            // SECURITY: Check available disk space before accepting
+            {
+                uint64_t available_space = get_available_disk_space(m_output_dir);
+                // Add 10% buffer for filesystem overhead
+                uint64_t required_space = file_list.total_size + (file_list.total_size / 10);
+                if (available_space > 0 && required_space > available_space) {
+                    LOG_WARN("Transfer rejected: insufficient disk space (need ", 
+                             required_space, ", have ", available_space, ")");
+                    AcceptRejectMessage reject_msg;
+                    reject_msg.accepted = false;
+                    reject_msg.reason = "Insufficient disk space";
+                    writer.write(ControlMessage::reject(reject_msg));
+                    final_error = TELEPORT_ERROR_FILE_WRITE;
+                    goto cleanup;
+                }
             }
             
             // Build transfer info

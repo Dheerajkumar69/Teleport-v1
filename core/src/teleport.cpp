@@ -280,6 +280,11 @@ TELEPORT_API TeleportError teleport_send_files(
     
     std::vector<std::string> paths;
     for (size_t i = 0; i < file_count; ++i) {
+        // SECURITY: Validate each file path is not null
+        if (file_paths[i] == nullptr) {
+            LOG_ERROR("Null file path at index ", i);
+            return TELEPORT_ERROR_INVALID_ARGUMENT;
+        }
         paths.push_back(file_paths[i]);
     }
     
