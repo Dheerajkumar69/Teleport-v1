@@ -63,6 +63,14 @@ public:
      */
     void broadcast_now();
     
+    /**
+     * @brief Update the control port advertised in discovery broadcasts
+     * @param port The port the control server is listening on
+     * 
+     * This should be called after the control server starts and binds to a port.
+     */
+    void set_control_port(uint16_t port);
+    
 private:
     void expiration_loop();
     void on_device_received(const Device& device);

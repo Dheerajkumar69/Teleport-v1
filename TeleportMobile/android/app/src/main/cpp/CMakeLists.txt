@@ -8,13 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Path to Teleport core
 set(TELEPORT_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../core")
 
-# Add nlohmann/json
-include(FetchContent)
-FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
+# nlohmann/json - use local header-only copy
+# The json.hpp file is in CMAKE_CURRENT_SOURCE_DIR/nlohmann/
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Core library sources (cross-platform only)
 set(CORE_SOURCES
@@ -29,7 +26,7 @@ set(CORE_SOURCES
     ${TELEPORT_CORE_DIR}/src/transfer/resume_manager.cpp
     ${TELEPORT_CORE_DIR}/src/transfer/stream_pool.cpp
     ${TELEPORT_CORE_DIR}/src/transfer/transfer_manager.cpp
-    ${TELEPORT_CORE_DIR}/src/platform/pal.cpp
+    ${TELEPORT_CORE_DIR}/src/platform/pal_android.cpp
     ${TELEPORT_CORE_DIR}/src/utils/logger.cpp
     ${TELEPORT_CORE_DIR}/src/utils/uuid.cpp
     ${TELEPORT_CORE_DIR}/src/utils/sanitize.cpp
@@ -45,18 +42,23 @@ add_library(teleport_rn SHARED
 target_include_directories(teleport_rn PRIVATE
     ${TELEPORT_CORE_DIR}/include
     ${TELEPORT_CORE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_definitions(teleport_rn PRIVATE
     TELEPORT_PLATFORM_ANDROID=1
 )
 
+# Find and link required Android/NDK libraries
+find_library(log-lib log)
+
 target_link_libraries(teleport_rn
     android
-    log
-    nlohmann_json::nlohmann_json
+    ${log-lib}
+    nlohmann_json
+    c++_shared
 )
 
 target_compile_options(teleport_rn PRIVATE
-    -Wall -Wextra
+    -Wall -Wextra -fexceptions -frtti
 )

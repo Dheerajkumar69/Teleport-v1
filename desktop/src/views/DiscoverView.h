@@ -18,6 +18,16 @@ public:
 
     void Update();
     void Render();
+    
+    /**
+     * @brief Check if user requested to send to a device
+     * @return Device ID to send to, or empty if no request
+     */
+    std::string PopSendRequest() {
+        std::string result = sendRequestDeviceId_;
+        sendRequestDeviceId_.clear();
+        return result;
+    }
 
 private:
     void RenderHeader();
@@ -34,6 +44,7 @@ private:
     float emptyStateAnim_ = 0.0f;
     float cardHoverAnim_[32] = {0};  // Max 32 devices
     std::string selectedDeviceId_;
+    std::string sendRequestDeviceId_;  // Set when Send button clicked
 };
 
 } // namespace teleport::ui

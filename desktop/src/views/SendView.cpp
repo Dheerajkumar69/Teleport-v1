@@ -13,11 +13,11 @@
 
 namespace teleport::ui {
 
-// Icons
-static const char* ICON_UPLOAD = "\xEE\x89\x8C";    // Upload arrow
-static const char* ICON_FILE = "\xEE\x8A\xB0";      // Document
-static const char* ICON_FOLDER = "\xEE\x8A\xB8";    // Folder
-static const char* ICON_CLOSE = "\xEE\x89\x8A";     // X
+// Text labels (fallback when icon fonts unavailable)
+static const char* ICON_UPLOAD = "^";     // Upload arrow
+static const char* ICON_FILE = "*";       // File indicator
+static const char* ICON_FOLDER = ">";     // Folder indicator  
+static const char* ICON_CLOSE = "X";      // Close/remove
 
 SendView::SendView(TeleportBridge* bridge, Theme* theme)
     : bridge_(bridge), theme_(theme) {}

@@ -66,6 +66,7 @@ private:
     void RenderSidebar();
     void RenderMainContent();
     void RenderSettingsPlaceholder();
+    void RenderGlobalIncomingDialog();  // Shows incoming transfer popup globally
     
     // Window procedure
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

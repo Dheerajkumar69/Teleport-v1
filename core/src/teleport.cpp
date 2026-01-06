@@ -393,6 +393,13 @@ TELEPORT_API TeleportError teleport_start_receiving(
         return static_cast<TeleportError>(result.error().code);
     }
     
+    // CRITICAL: Update the discovery broadcasts with the actual server port
+    // so that other devices know where to connect to send us files
+    uint16_t bound_port = result.value();
+    engine->discovery->set_control_port(bound_port);
+    
+    LOG_INFO("Receiving started on port ", bound_port);
+    
     return TELEPORT_OK;
 }
 

@@ -17,10 +17,10 @@ static inline float Lerp(float a, float b, float t) {
 
 namespace teleport::ui {
 
-// Icons
-static const char* ICON_DOWNLOAD = "\xEE\x89\x96";  // Download
-static const char* ICON_FOLDER = "\xEE\x8A\xB8";    // Folder
-static const char* ICON_CHECK = "\xEE\x89\xBE";     // Checkmark
+// Text labels (fallback when icon fonts unavailable)
+static const char* ICON_DOWNLOAD = "v";    // Download arrow
+static const char* ICON_FOLDER = ">";      // Folder
+static const char* ICON_CHECK = "+";       // Checkmark
 
 ReceiveView::ReceiveView(TeleportBridge* bridge, Theme* theme)
     : bridge_(bridge), theme_(theme) {

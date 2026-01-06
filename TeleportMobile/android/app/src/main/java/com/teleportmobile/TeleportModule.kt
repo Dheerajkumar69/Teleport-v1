@@ -1,176 +1,160 @@
 package com.teleportmobile
 
-import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import java.io.File
 
 class TeleportModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
+    private var engineHandle: Long = 0
+    private val mainHandler = Handler(Looper.getMainLooper())
+    
     companion object {
+        const val NAME = "TeleportModule"
+        
         init {
             System.loadLibrary("teleport_rn")
         }
     }
-
-    private var engineHandle: Long = 0
-
-    override fun getName(): String = "TeleportModule"
-
-    override fun initialize() {
-        super.initialize()
-        // Create engine on initialize
-        val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
-        val downloadPath = File(reactApplicationContext.getExternalFilesDir(null), "Teleport").apply {
-            mkdirs()
-        }.absolutePath
-        engineHandle = nativeCreate(deviceName, downloadPath)
-    }
-
-    override fun invalidate() {
-        if (engineHandle != 0L) {
-            nativeDestroy(engineHandle)
-            engineHandle = 0
+    
+    override fun getName(): String = NAME
+    
+    // Native JNI methods
+    private external fun nativeInit(deviceName: String): Long
+    private external fun nativeDestroy(handle: Long)
+    private external fun nativeStartDiscovery(handle: Long)
+    private external fun nativeStopDiscovery(handle: Long)
+    private external fun nativeGetDevices(handle: Long): String
+    private external fun nativeSendFiles(handle: Long, targetId: String, filePaths: Array<String>)
+    private external fun nativeStartReceiving(handle: Long, outputDir: String)
+    private external fun nativeStopReceiving(handle: Long)
+    
+    @ReactMethod
+    fun initialize(deviceName: String, promise: Promise) {
+        try {
+            engineHandle = nativeInit(deviceName)
+            if (engineHandle != 0L) {
+                promise.resolve(true)
+            } else {
+                promise.reject("INIT_ERROR", "Failed to initialize Teleport engine")
+            }
+        } catch (e: Exception) {
+            promise.reject("INIT_ERROR", e.message, e)
         }
-        super.invalidate()
     }
-
-    // === Discovery APIs ===
+    
+    @ReactMethod
+    fun destroy(promise: Promise) {
+        try {
+            if (engineHandle != 0L) {
+                nativeDestroy(engineHandle)
+                engineHandle = 0
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DESTROY_ERROR", e.message, e)
+        }
+    }
     
     @ReactMethod
     fun startDiscovery(promise: Promise) {
-        if (engineHandle == 0L) {
-            promise.reject("ENGINE_ERROR", "Engine not initialized")
-            return
-        }
-        val result = nativeStartDiscovery(engineHandle)
-        if (result == 0) {
+        try {
+            if (engineHandle == 0L) {
+                promise.reject("NOT_INITIALIZED", "Engine not initialized")
+                return
+            }
+            nativeStartDiscovery(engineHandle)
             promise.resolve(true)
-        } else {
-            promise.reject("DISCOVERY_ERROR", "Failed to start discovery: $result")
+        } catch (e: Exception) {
+            promise.reject("DISCOVERY_ERROR", e.message, e)
         }
     }
-
+    
     @ReactMethod
     fun stopDiscovery(promise: Promise) {
-        if (engineHandle == 0L) {
-            promise.reject("ENGINE_ERROR", "Engine not initialized")
-            return
+        try {
+            if (engineHandle != 0L) {
+                nativeStopDiscovery(engineHandle)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DISCOVERY_ERROR", e.message, e)
         }
-        nativeStopDiscovery(engineHandle)
-        promise.resolve(true)
     }
-
+    
     @ReactMethod
     fun getDevices(promise: Promise) {
-        if (engineHandle == 0L) {
-            promise.reject("ENGINE_ERROR", "Engine not initialized")
-            return
+        try {
+            if (engineHandle == 0L) {
+                promise.reject("NOT_INITIALIZED", "Engine not initialized")
+                return
+            }
+            val devicesJson = nativeGetDevices(engineHandle)
+            promise.resolve(devicesJson)
+        } catch (e: Exception) {
+            promise.reject("DEVICES_ERROR", e.message, e)
         }
-        val devicesJson = nativeGetDevices(engineHandle)
-        promise.resolve(devicesJson)
     }
-
-    // === Send APIs ===
     
     @ReactMethod
-    fun sendFiles(deviceId: String, filePaths: ReadableArray, promise: Promise) {
-        if (engineHandle == 0L) {
-            promise.reject("ENGINE_ERROR", "Engine not initialized")
-            return
-        }
-        val paths = Array(filePaths.size()) { filePaths.getString(it) ?: "" }
-        val result = nativeSendFiles(engineHandle, deviceId, paths)
-        if (result == 0) {
+    fun sendFiles(targetId: String, filePaths: ReadableArray, promise: Promise) {
+        try {
+            if (engineHandle == 0L) {
+                promise.reject("NOT_INITIALIZED", "Engine not initialized")
+                return
+            }
+            val paths = Array(filePaths.size()) { i -> filePaths.getString(i) ?: "" }
+            nativeSendFiles(engineHandle, targetId, paths)
             promise.resolve(true)
-        } else {
-            promise.reject("SEND_ERROR", "Failed to send files: $result")
+        } catch (e: Exception) {
+            promise.reject("SEND_ERROR", e.message, e)
         }
     }
-
-    // === Receive APIs ===
     
     @ReactMethod
-    fun startReceiving(promise: Promise) {
-        if (engineHandle == 0L) {
-            promise.reject("ENGINE_ERROR", "Engine not initialized")
-            return
-        }
-        val downloadPath = File(reactApplicationContext.getExternalFilesDir(null), "Teleport").absolutePath
-        val result = nativeStartReceiving(engineHandle, downloadPath)
-        if (result == 0) {
+    fun startReceiving(outputDir: String, promise: Promise) {
+        try {
+            if (engineHandle == 0L) {
+                promise.reject("NOT_INITIALIZED", "Engine not initialized")
+                return
+            }
+            nativeStartReceiving(engineHandle, outputDir)
             promise.resolve(true)
-        } else {
-            promise.reject("RECEIVE_ERROR", "Failed to start receiving: $result")
+        } catch (e: Exception) {
+            promise.reject("RECEIVE_ERROR", e.message, e)
         }
     }
-
+    
     @ReactMethod
     fun stopReceiving(promise: Promise) {
-        if (engineHandle == 0L) {
-            promise.reject("ENGINE_ERROR", "Engine not initialized")
-            return
+        try {
+            if (engineHandle != 0L) {
+                nativeStopReceiving(engineHandle)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RECEIVE_ERROR", e.message, e)
         }
-        nativeStopReceiving(engineHandle)
-        promise.resolve(true)
     }
-
-    // === Event Emitters ===
     
-    private fun sendEvent(eventName: String, params: WritableMap?) {
-        reactApplicationContext
-            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit(eventName, params)
+    // Event emitter support
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // Required for RN event emitter
     }
-
-    // Called from JNI when device found
-    fun onDeviceFound(id: String, name: String, os: String, ip: String, port: Int) {
-        val params = Arguments.createMap().apply {
-            putString("id", id)
-            putString("name", name)
-            putString("os", os)
-            putString("ip", ip)
-            putInt("port", port)
+    
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Required for RN event emitter
+    }
+    
+    // Called from native to emit events
+    fun emitEvent(eventName: String, data: String) {
+        mainHandler.post {
+            reactApplicationContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit(eventName, data)
         }
-        sendEvent("onDeviceFound", params)
     }
-
-    // Called from JNI when device lost
-    fun onDeviceLost(deviceId: String) {
-        val params = Arguments.createMap().apply {
-            putString("id", deviceId)
-        }
-        sendEvent("onDeviceLost", params)
-    }
-
-    // Called from JNI for transfer progress
-    fun onTransferProgress(bytesTransferred: Long, bytesTotal: Long, speedBps: Double, filesCompleted: Int, filesTotal: Int) {
-        val params = Arguments.createMap().apply {
-            putDouble("bytesTransferred", bytesTransferred.toDouble())
-            putDouble("bytesTotal", bytesTotal.toDouble())
-            putDouble("speedBps", speedBps)
-            putInt("filesCompleted", filesCompleted)
-            putInt("filesTotal", filesTotal)
-        }
-        sendEvent("onTransferProgress", params)
-    }
-
-    // Called from JNI when transfer complete
-    fun onTransferComplete(errorCode: Int) {
-        val params = Arguments.createMap().apply {
-            putInt("errorCode", errorCode)
-            putBoolean("success", errorCode == 0)
-        }
-        sendEvent("onTransferComplete", params)
-    }
-
-    // Native methods
-    private external fun nativeCreate(deviceName: String, downloadPath: String): Long
-    private external fun nativeDestroy(handle: Long)
-    private external fun nativeStartDiscovery(handle: Long): Int
-    private external fun nativeStopDiscovery(handle: Long): Int
-    private external fun nativeGetDevices(handle: Long): String
-    private external fun nativeSendFiles(handle: Long, deviceId: String, filePaths: Array<String>): Int
-    private external fun nativeStartReceiving(handle: Long, outputDir: String): Int
-    private external fun nativeStopReceiving(handle: Long): Int
 }

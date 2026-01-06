@@ -8,6 +8,8 @@
 #include <ShlObj.h>
 #include <chrono>
 #include <algorithm>
+#include <thread>
+#include <memory>
 
 namespace teleport::ui {
 
@@ -176,43 +178,61 @@ bool TeleportBridge::SendFiles(const std::string& deviceId,
     if (!found) {
         return false;
     }
-
-    // Prepare file paths array
-    std::vector<const char*> paths;
-    for (const auto& path : filePaths) {
-        paths.push_back(path.c_str());
+    
+    // Safety check: port 0 means the device is not ready to receive
+    if (targetDevice.port == 0) {
+        // Device may not have receiving enabled
+        return false;
     }
 
-    TeleportError err = teleport_send_files(
-        engine_,
-        &targetDevice,
-        paths.data(),
-        paths.size(),
-        ProgressCallback,
-        CompleteCallback,
-        this,
-        &currentTransfer_
-    );
-
-    if (err == TELEPORT_OK) {
-        // Add to transfers list
-        TransferInfo info;
-        info.id = deviceId + "_send_" + std::to_string(GetTickCount64());
-        info.deviceName = targetDevice.name;
-        info.isSending = true;
-        info.state = TELEPORT_STATE_CONNECTING;
-        info.bytesTotal = 0;
-        info.bytesTransferred = 0;
-        info.filesTotal = (uint32_t)filePaths.size();
-        info.filesCompleted = 0;
-        
+    // Add to transfers list BEFORE starting the thread
+    TransferInfo info;
+    info.id = deviceId + "_send_" + std::to_string(GetTickCount64());
+    info.deviceName = targetDevice.name;
+    info.isSending = true;
+    info.state = TELEPORT_STATE_CONNECTING;
+    info.bytesTotal = 0;
+    info.bytesTransferred = 0;
+    info.filesTotal = (uint32_t)filePaths.size();
+    info.filesCompleted = 0;
+    
+    {
         std::lock_guard<std::mutex> lock(transfersMutex_);
         transfers_.push_back(info);
-        
-        return true;
     }
+    
+    // Run the transfer in a separate thread to avoid blocking the UI
+    // Make copies of data needed for the thread
+    auto pathsCopy = std::make_shared<std::vector<std::string>>(filePaths);
+    TeleportEngine* engineCopy = engine_;
+    TeleportBridge* self = this;
+    
+    std::thread([engineCopy, targetDevice, pathsCopy, self]() {
+        // Build paths array for C API
+        std::vector<const char*> pathPtrs;
+        for (const auto& path : *pathsCopy) {
+            pathPtrs.push_back(path.c_str());
+        }
+        
+        TeleportTransfer* transfer = nullptr;
+        TeleportError err = teleport_send_files(
+            engineCopy,
+            &targetDevice,
+            pathPtrs.data(),
+            pathPtrs.size(),
+            ProgressCallback,
+            CompleteCallback,
+            self,
+            &transfer
+        );
+        
+        if (err != TELEPORT_OK) {
+            // Update transfer state to failed
+            CompleteCallback(err, self);
+        }
+    }).detach();
 
-    return false;
+    return true;
 }
 
 bool TeleportBridge::StartReceiving(const std::string& outputDir) {

@@ -7,6 +7,7 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
+#include <teleport/teleport.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
@@ -306,7 +307,18 @@ int Application::Run() {
         }
         
         // Update views
-        if (discoverView_) discoverView_->Update();
+        if (discoverView_) {
+            discoverView_->Update();
+            
+            // Check if user clicked Send on a device card
+            std::string sendDeviceId = discoverView_->PopSendRequest();
+            if (!sendDeviceId.empty() && sendView_) {
+                sendView_->SetTargetDevice(sendDeviceId);
+                previousTab_ = currentTab_;
+                currentTab_ = Tab::Send;
+                tabTransition_ = 0.0f;
+            }
+        }
         if (sendView_) sendView_->Update();
         if (receiveView_) receiveView_->Update();
         if (transfersView_) transfersView_->Update();
@@ -355,6 +367,12 @@ void Application::RenderUI() {
     RenderMainContent();
     
     ImGui::End();
+    
+    // GLOBAL: Check for incoming transfer request and show dialog
+    // This shows regardless of which tab is active
+    if (bridge_ && bridge_->HasPendingRequest()) {
+        RenderGlobalIncomingDialog();
+    }
 }
 
 void Application::RenderSidebar() {
@@ -518,6 +536,141 @@ void Application::RenderSettingsPlaceholder() {
     
     ImGui::SetCursorPos(ImVec2(40, 80));
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "Coming soon...");
+}
+
+void Application::RenderGlobalIncomingDialog() {
+    ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    ImVec2 dialogSize(660, 520);  // 20% larger
+    ImVec2 dialogPos(
+        (displaySize.x - dialogSize.x) * 0.5f,
+        (displaySize.y - dialogSize.y) * 0.5f
+    );
+    
+    // Semi-transparent dark overlay behind dialog
+    ImDrawList* bgList = ImGui::GetForegroundDrawList();
+    bgList->AddRectFilled(ImVec2(0, 0), displaySize, IM_COL32(0, 0, 0, 160));
+    
+    // Set up the popup window
+    ImGui::SetNextWindowPos(dialogPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(dialogSize, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(1.0f);
+    
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    
+    // MUCH BRIGHTER background (100% brighter = doubled)
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(40, 35));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 3.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.36f, 0.36f, 0.42f, 1.0f));  // 100% brighter
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.7f, 0.5f, 1.0f, 1.0f));  // Bright purple border
+    
+    ImGui::Begin("##IncomingTransferDialog", nullptr, flags);
+    
+    auto request = bridge_->GetPendingRequest();
+    
+    // Header - BRIGHT PURPLE
+    ImGui::PushFont(theme_->GetHeadingFont());
+    ImGui::TextColored(ImVec4(0.85f, 0.7f, 1.0f, 1.0f), "Incoming File Transfer");
+    ImGui::PopFont();
+    
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    
+    // Sender info
+    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "From:");
+    ImGui::SameLine();
+    ImGui::PushFont(theme_->GetHeadingFont());
+    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", request.sender.name.c_str());
+    ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%s)", request.sender.ip.c_str());
+    
+    ImGui::Spacing();
+    ImGui::Spacing();
+    
+    // File list header
+    ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.9f, 1.0f), 
+        "Files to receive: %zu", request.files.size());
+    
+    ImGui::Spacing();
+    
+    // File list - fixed height that fits well
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.25f, 0.25f, 0.30f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45f, 0.45f, 0.55f, 1.0f));
+    ImGui::BeginChild("##FileList", ImVec2(0, 180), true);
+    
+    for (const auto& [name, size] : request.files) {
+        char sizeStr[32];
+        teleport_format_bytes(size, sizeStr, sizeof(sizeStr));
+        
+        ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.6f, 1.0f), "*");  // Bright green bullet
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", name.c_str());
+        ImGui::SameLine(dialogSize.x - 180);
+        ImGui::TextColored(ImVec4(0.8f, 0.9f, 1.0f, 1.0f), "%s", sizeStr);
+    }
+    
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    
+    ImGui::Spacing();
+    
+    // Total size
+    char totalStr[32];
+    teleport_format_bytes(request.totalSize, totalStr, sizeof(totalStr));
+    ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.9f, 1.0f), "Total size:");
+    ImGui::SameLine();
+    ImGui::PushFont(theme_->GetHeadingFont());
+    ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.8f, 1.0f), "%s", totalStr);
+    ImGui::PopFont();
+    
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    
+    // Buttons - centered at bottom
+    float buttonWidth = 200;
+    float buttonHeight = 50;
+    float totalButtonWidth = buttonWidth * 2 + 40;
+    float startX = (dialogSize.x - 80 - totalButtonWidth) / 2;
+    
+    ImGui::SetCursorPosX(startX);
+    
+    // REJECT button - BRIGHT RED
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.25f, 0.25f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.65f, 0.2f, 0.2f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
+    
+    if (ImGui::Button("Reject", ImVec2(buttonWidth, buttonHeight))) {
+        bridge_->RejectPendingRequest();
+    }
+    
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+    
+    ImGui::SameLine(0, 40);
+    
+    // ACCEPT button - BRIGHT GREEN
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.75f, 0.45f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.55f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.2f, 0.65f, 0.4f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
+    
+    if (ImGui::Button("Accept", ImVec2(buttonWidth, buttonHeight))) {
+        bridge_->AcceptPendingRequest();
+    }
+    
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+    
+    ImGui::End();
+    
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3);
 }
 
 LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

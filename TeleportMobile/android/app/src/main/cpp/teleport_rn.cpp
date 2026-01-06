@@ -1,13 +1,11 @@
 /**
- * @file teleport_rn.cpp
- * @brief JNI bridge for React Native TeleportModule
+ * JNI bridge between Kotlin and C++ Teleport core
  */
-
 #include <jni.h>
-#include <android/log.h>
 #include <string>
-#include <vector>
-#include <mutex>
+#include <cstring>
+#include <android/log.h>
+#include <nlohmann/json.hpp>
 
 #include "teleport/teleport.h"
 
@@ -15,270 +13,240 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-namespace {
-    JavaVM* g_jvm = nullptr;
-    jobject g_module = nullptr;
-    std::mutex g_mutex;
-    
-    JNIEnv* getEnv() {
-        JNIEnv* env = nullptr;
-        if (g_jvm) {
-            g_jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
-            if (!env) {
-                g_jvm->AttachCurrentThread(&env, nullptr);
-            }
+using json = nlohmann::json;
+
+// Global references for callbacks
+static JavaVM* g_jvm = nullptr;
+static jobject g_module_instance = nullptr;
+
+// Helper to get JNIEnv in callback threads
+static JNIEnv* getEnv() {
+    JNIEnv* env = nullptr;
+    if (g_jvm) {
+        int status = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            g_jvm->AttachCurrentThread(&env, nullptr);
         }
-        return env;
     }
-    
-    std::string jstringToString(JNIEnv* env, jstring jstr) {
-        if (!jstr) return "";
-        const char* chars = env->GetStringUTFChars(jstr, nullptr);
-        std::string result(chars);
-        env->ReleaseStringUTFChars(jstr, chars);
-        return result;
-    }
+    return env;
 }
 
-// Discovery callbacks
-void onDeviceDiscovered(const TeleportDevice* device, void* user_data) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    JNIEnv* env = getEnv();
-    if (!env || !g_module) return;
-    
-    jclass cls = env->GetObjectClass(g_module);
-    jmethodID method = env->GetMethodID(cls, "onDeviceFound",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
-    
-    jstring id = env->NewStringUTF(device->id);
-    jstring name = env->NewStringUTF(device->name);
-    jstring os = env->NewStringUTF(device->os);
-    jstring ip = env->NewStringUTF(device->ip);
-    
-    env->CallVoidMethod(g_module, method, id, name, os, ip, (jint)device->port);
-    
-    env->DeleteLocalRef(id);
-    env->DeleteLocalRef(name);
-    env->DeleteLocalRef(os);
-    env->DeleteLocalRef(ip);
-    env->DeleteLocalRef(cls);
+// Callbacks from C++ core
+void onDeviceDiscovered(const TeleportDevice* device, void*) {
+    LOGI("Device discovered: %s (%s)", device->name, device->id);
+    // TODO: Emit event to JS
 }
 
-void onDeviceLost(const char* device_id, void* user_data) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    JNIEnv* env = getEnv();
-    if (!env || !g_module) return;
-    
-    jclass cls = env->GetObjectClass(g_module);
-    jmethodID method = env->GetMethodID(cls, "onDeviceLost", "(Ljava/lang/String;)V");
-    jstring id = env->NewStringUTF(device_id);
-    env->CallVoidMethod(g_module, method, id);
-    env->DeleteLocalRef(id);
-    env->DeleteLocalRef(cls);
+void onDeviceLost(const char* device_id, void*) {
+    LOGI("Device lost: %s", device_id);
+    // TODO: Emit event to JS
 }
 
-void onProgress(const TeleportProgress* progress, void* user_data) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    JNIEnv* env = getEnv();
-    if (!env || !g_module) return;
-    
-    jclass cls = env->GetObjectClass(g_module);
-    jmethodID method = env->GetMethodID(cls, "onTransferProgress", "(JJDII)V");
-    env->CallVoidMethod(g_module, method,
-        (jlong)progress->total_bytes_transferred,
-        (jlong)progress->total_bytes_total,
-        (jdouble)progress->speed_bytes_per_sec,
-        (jint)progress->files_completed,
-        (jint)progress->files_total);
-    env->DeleteLocalRef(cls);
+void onProgress(const TeleportProgress* progress, void*) {
+    LOGI("Progress: %llu / %llu", 
+         (unsigned long long)progress->total_bytes_transferred, 
+         (unsigned long long)progress->total_bytes_total);
+    // TODO: Emit event to JS
 }
 
-void onComplete(TeleportError error, void* user_data) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    JNIEnv* env = getEnv();
-    if (!env || !g_module) return;
-    
-    jclass cls = env->GetObjectClass(g_module);
-    jmethodID method = env->GetMethodID(cls, "onTransferComplete", "(I)V");
-    env->CallVoidMethod(g_module, method, (jint)error);
-    env->DeleteLocalRef(cls);
+void onComplete(TeleportError error, void*) {
+    LOGI("Transfer complete: %d", error);
+    // TODO: Emit event to JS
 }
 
 extern "C" {
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     g_jvm = vm;
-    LOGI("Teleport RN JNI loaded");
+    LOGI("JNI_OnLoad: Teleport native module loaded");
     return JNI_VERSION_1_6;
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_teleportmobile_TeleportModule_nativeCreate(
-    JNIEnv* env, jobject thiz, jstring device_name, jstring download_path
+Java_com_teleportmobile_TeleportModule_nativeInit(
+    JNIEnv* env, jobject thiz, jstring device_name
 ) {
-    // Store module reference for callbacks
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        if (g_module) {
-            env->DeleteGlobalRef(g_module);
-        }
-        g_module = env->NewGlobalRef(thiz);
-    }
+    const char* name = env->GetStringUTFChars(device_name, nullptr);
+    LOGI("Initializing Teleport engine with device name: %s", name);
     
     TeleportConfig config = {};
-    std::string name = jstringToString(env, device_name);
-    std::string path = jstringToString(env, download_path);
-    
-    config.device_name = name.c_str();
-    config.download_path = path.c_str();
-    config.control_port = 0;
-    config.chunk_size = TELEPORT_CHUNK_SIZE;
-    config.parallel_streams = TELEPORT_PARALLEL_STREAMS;
-    config.discovery_interval_ms = TELEPORT_DISCOVERY_INTERVAL;
-    config.device_ttl_ms = TELEPORT_DEVICE_TTL;
+    config.device_name = name;
+    config.control_port = 0;  // Auto
+    config.chunk_size = 0;    // Default
+    config.parallel_streams = 0;  // Default
+    config.discovery_interval_ms = 0;  // Default
+    config.device_ttl_ms = 0;  // Default
+    config.download_path = nullptr;  // Default
     
     TeleportEngine* engine = nullptr;
     TeleportError err = teleport_create(&config, &engine);
     
+    env->ReleaseStringUTFChars(device_name, name);
+    
     if (err != TELEPORT_OK) {
-        LOGE("Failed to create engine: %s", teleport_error_string(err));
+        LOGE("Failed to create Teleport engine: %d", err);
         return 0;
     }
     
-    LOGI("Teleport engine created");
+    // Store global reference to module instance
+    if (g_module_instance != nullptr) {
+        env->DeleteGlobalRef(g_module_instance);
+    }
+    g_module_instance = env->NewGlobalRef(thiz);
+    
+    LOGI("Teleport engine created: %p", (void*)engine);
     return reinterpret_cast<jlong>(engine);
 }
 
 JNIEXPORT void JNICALL
 Java_com_teleportmobile_TeleportModule_nativeDestroy(
-    JNIEnv* env, jobject thiz, jlong handle
+    JNIEnv* env, jobject, jlong handle
 ) {
-    if (handle) {
-        TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
+    TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
+    if (engine) {
+        LOGI("Destroying Teleport engine: %p", (void*)engine);
         teleport_destroy(engine);
-        LOGI("Teleport engine destroyed");
     }
     
-    std::lock_guard<std::mutex> lock(g_mutex);
-    if (g_module) {
-        env->DeleteGlobalRef(g_module);
-        g_module = nullptr;
+    if (g_module_instance != nullptr) {
+        env->DeleteGlobalRef(g_module_instance);
+        g_module_instance = nullptr;
     }
 }
 
-JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
 Java_com_teleportmobile_TeleportModule_nativeStartDiscovery(
-    JNIEnv* env, jobject thiz, jlong handle
+    JNIEnv*, jobject, jlong handle
 ) {
-    if (!handle) return -1;
     TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
-    return teleport_start_discovery(engine, onDeviceDiscovered, onDeviceLost, nullptr);
+    if (engine) {
+        LOGI("Starting discovery");
+        teleport_start_discovery(engine, onDeviceDiscovered, onDeviceLost, nullptr);
+    }
 }
 
-JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
 Java_com_teleportmobile_TeleportModule_nativeStopDiscovery(
-    JNIEnv* env, jobject thiz, jlong handle
+    JNIEnv*, jobject, jlong handle
 ) {
-    if (!handle) return -1;
     TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
-    return teleport_stop_discovery(engine);
+    if (engine) {
+        LOGI("Stopping discovery");
+        teleport_stop_discovery(engine);
+    }
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_teleportmobile_TeleportModule_nativeGetDevices(
-    JNIEnv* env, jobject thiz, jlong handle
+    JNIEnv* env, jobject, jlong handle
 ) {
-    if (!handle) return env->NewStringUTF("[]");
     TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
-    
-    TeleportDevice devices[32];
-    size_t count = 32;
-    TeleportError err = teleport_get_devices(engine, devices, &count);
-    
-    if (err != TELEPORT_OK || count == 0) {
+    if (!engine) {
         return env->NewStringUTF("[]");
     }
     
-    // Build JSON array
-    std::string json = "[";
-    for (size_t i = 0; i < count; i++) {
-        if (i > 0) json += ",";
-        json += "{";
-        json += "\"id\":\"" + std::string(devices[i].id) + "\",";
-        json += "\"name\":\"" + std::string(devices[i].name) + "\",";
-        json += "\"os\":\"" + std::string(devices[i].os) + "\",";
-        json += "\"ip\":\"" + std::string(devices[i].ip) + "\",";
-        json += "\"port\":" + std::to_string(devices[i].port);
-        json += "}";
-    }
-    json += "]";
+    TeleportDevice devices[32];
+    size_t count = 0;
+    TeleportError err = teleport_get_devices(engine, devices, 32, &count);
     
-    return env->NewStringUTF(json.c_str());
+    if (err != TELEPORT_OK) {
+        LOGE("Failed to get devices: %d", err);
+        return env->NewStringUTF("[]");
+    }
+    
+    json device_array = json::array();
+    for (size_t i = 0; i < count; i++) {
+        json device_obj = {
+            {"id", devices[i].id},
+            {"name", devices[i].name},
+            {"ip", devices[i].ip},
+            {"port", devices[i].port},
+            {"os", devices[i].os}
+        };
+        device_array.push_back(device_obj);
+    }
+    
+    std::string json_str = device_array.dump();
+    return env->NewStringUTF(json_str.c_str());
 }
 
-JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
 Java_com_teleportmobile_TeleportModule_nativeSendFiles(
-    JNIEnv* env, jobject thiz, jlong handle, jstring target_id, jobjectArray file_paths
+    JNIEnv* env, jobject, jlong handle, jstring target_id, jobjectArray file_paths
 ) {
-    if (!handle) return -1;
     TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
+    if (!engine) return;
     
-    std::string deviceId = jstringToString(env, target_id);
+    const char* target = env->GetStringUTFChars(target_id, nullptr);
     
-    // Get device by ID
+    // Find target device
     TeleportDevice devices[32];
-    size_t count = 32;
-    teleport_get_devices(engine, devices, &count);
+    size_t count = 0;
+    teleport_get_devices(engine, devices, 32, &count);
     
-    TeleportDevice* target = nullptr;
+    const TeleportDevice* target_device = nullptr;
     for (size_t i = 0; i < count; i++) {
-        if (std::string(devices[i].id) == deviceId) {
-            target = &devices[i];
+        if (strcmp(devices[i].id, target) == 0) {
+            target_device = &devices[i];
             break;
         }
     }
     
-    if (!target) {
-        LOGE("Device not found: %s", deviceId.c_str());
-        return -1;
+    if (!target_device) {
+        LOGE("Target device not found: %s", target);
+        env->ReleaseStringUTFChars(target_id, target);
+        return;
     }
     
     // Get file paths
-    int pathCount = env->GetArrayLength(file_paths);
-    std::vector<std::string> paths;
-    std::vector<const char*> pathPtrs;
+    int path_count = env->GetArrayLength(file_paths);
+    const char** paths = new const char*[path_count];
+    jstring* jstrings = new jstring[path_count];
     
-    for (int i = 0; i < pathCount; i++) {
-        jstring jpath = (jstring)env->GetObjectArrayElement(file_paths, i);
-        paths.push_back(jstringToString(env, jpath));
-        env->DeleteLocalRef(jpath);
+    for (int i = 0; i < path_count; i++) {
+        jstrings[i] = (jstring)env->GetObjectArrayElement(file_paths, i);
+        paths[i] = env->GetStringUTFChars(jstrings[i], nullptr);
     }
     
-    for (const auto& p : paths) {
-        pathPtrs.push_back(p.c_str());
-    }
+    LOGI("Sending %d files to %s", path_count, target_device->name);
     
-    return teleport_send_files(engine, target, pathPtrs.data(), pathPtrs.size(),
-        onProgress, onComplete, nullptr, nullptr);
+    TeleportTransfer* transfer = nullptr;
+    teleport_send_files(engine, target_device, paths, static_cast<size_t>(path_count), 
+                        onProgress, onComplete, nullptr, &transfer);
+    
+    // Clean up
+    for (int i = 0; i < path_count; i++) {
+        env->ReleaseStringUTFChars(jstrings[i], paths[i]);
+    }
+    delete[] paths;
+    delete[] jstrings;
+    env->ReleaseStringUTFChars(target_id, target);
 }
 
-JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
 Java_com_teleportmobile_TeleportModule_nativeStartReceiving(
-    JNIEnv* env, jobject thiz, jlong handle, jstring output_dir
+    JNIEnv* env, jobject, jlong handle, jstring output_dir
 ) {
-    if (!handle) return -1;
     TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
-    std::string dir = jstringToString(env, output_dir);
-    return teleport_start_receiving(engine, dir.c_str(), nullptr, onProgress, onComplete, nullptr);
+    if (!engine) return;
+    
+    const char* dir = env->GetStringUTFChars(output_dir, nullptr);
+    LOGI("Starting receiver with output dir: %s", dir);
+    
+    teleport_start_receiving(engine, dir, nullptr, onProgress, onComplete, nullptr);
+    
+    env->ReleaseStringUTFChars(output_dir, dir);
 }
 
-JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
 Java_com_teleportmobile_TeleportModule_nativeStopReceiving(
-    JNIEnv* env, jobject thiz, jlong handle
+    JNIEnv*, jobject, jlong handle
 ) {
-    if (!handle) return -1;
     TeleportEngine* engine = reinterpret_cast<TeleportEngine*>(handle);
-    return teleport_stop_receiving(engine);
+    if (engine) {
+        LOGI("Stopping receiver");
+        teleport_stop_receiving(engine);
+    }
 }
 
 } // extern "C"

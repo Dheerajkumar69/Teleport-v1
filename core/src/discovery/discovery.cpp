@@ -116,6 +116,14 @@ void DiscoveryManager::broadcast_now() {
     }
 }
 
+void DiscoveryManager::set_control_port(uint16_t port) {
+    m_self_device.address.port = port;
+    LOG_INFO("Updated control port to ", port);
+    
+    // Immediately broadcast with updated port so other devices know where to connect
+    broadcast_now();
+}
+
 void DiscoveryManager::on_device_received(const Device& device) {
     bool is_new = m_devices.upsert(device);
     

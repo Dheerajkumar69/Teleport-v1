@@ -22,6 +22,11 @@ public:
     void Update();
     void Render();
     void HandleFileDrop(HDROP hDrop);
+    
+    /**
+     * @brief Set the target device for sending (called from DiscoverView)
+     */
+    void SetTargetDevice(const std::string& deviceId) { selectedDeviceId_ = deviceId; }
 
 private:
     void RenderHeader();

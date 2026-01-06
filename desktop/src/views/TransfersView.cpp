@@ -11,14 +11,14 @@
 
 namespace teleport::ui {
 
-// Icons
-static const char* ICON_UPLOAD = "\xEE\x89\x8C";
-static const char* ICON_DOWNLOAD = "\xEE\x89\x96";
-static const char* ICON_PAUSE = "\xEE\x89\xB4";
-static const char* ICON_PLAY = "\xEE\x89\xB6";
-static const char* ICON_CANCEL = "\xEE\x89\x8A";
-static const char* ICON_CHECK = "\xEE\x89\xBE";
-static const char* ICON_ERROR = "\xEE\x89\xA0";
+// Text labels (fallback when icon fonts unavailable)
+static const char* ICON_UPLOAD = "^";      // Upload
+static const char* ICON_DOWNLOAD = "v";    // Download
+static const char* ICON_PAUSE = "||";      // Pause
+static const char* ICON_PLAY = ">";        // Play/Resume
+static const char* ICON_CANCEL = "X";      // Cancel
+static const char* ICON_CHECK = "+";       // Checkmark
+static const char* ICON_ERROR = "!";       // Error
 
 TransfersView::TransfersView(TeleportBridge* bridge, Theme* theme)
     : bridge_(bridge), theme_(theme) {}
