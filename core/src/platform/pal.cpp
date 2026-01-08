@@ -163,6 +163,30 @@ std::string get_broadcast_address() {
     return "255.255.255.255";
 }
 
+std::string get_default_gateway() {
+    // Use GetAdaptersInfo to find the default gateway
+    ULONG buffer_size = 0;
+    GetAdaptersInfo(nullptr, &buffer_size);
+    
+    if (buffer_size == 0) {
+        return "";
+    }
+    
+    std::vector<uint8_t> buffer(buffer_size);
+    PIP_ADAPTER_INFO adapters = reinterpret_cast<PIP_ADAPTER_INFO>(buffer.data());
+    
+    if (GetAdaptersInfo(adapters, &buffer_size) == NO_ERROR) {
+        for (auto adapter = adapters; adapter; adapter = adapter->Next) {
+            std::string gateway = adapter->GatewayList.IpAddress.String;
+            if (!gateway.empty() && gateway != "0.0.0.0") {
+                return gateway;
+            }
+        }
+    }
+    
+    return "";
+}
+
 /* ============================================================================
  * Windows TCP Socket Implementation
  * ============================================================================ */

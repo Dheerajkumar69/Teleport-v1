@@ -425,4 +425,54 @@ int TeleportBridge::OnIncoming(const TeleportDevice* sender,
     return response;
 }
 
+// ============ QR Pairing ============
+
+bool TeleportBridge::GenerateQrPairing(int expirySeconds) {
+    if (!engine_) return false;
+    
+    // Allocate buffer for QR image (64KB should be enough)
+    qrImageData_.resize(65536);
+    size_t qr_size = qrImageData_.size();
+    
+    TeleportError err = teleport_generate_qr_pairing(
+        engine_,
+        &qrInfo_,
+        qrImageData_.data(),
+        &qr_size,
+        expirySeconds
+    );
+    
+    if (err == TELEPORT_OK) {
+        qrImageData_.resize(qr_size);
+        return true;
+    }
+    
+    qrImageData_.clear();
+    return false;
+}
+
+// ============ Hotspot Mode ============
+
+bool TeleportBridge::StartHotspot() {
+    if (!engine_ || hotspotActive_.load()) return false;
+    
+    TeleportError err = teleport_create_hotspot(engine_, &hotspotInfo_);
+    
+    if (err == TELEPORT_OK) {
+        hotspotActive_.store(true);
+        return true;
+    }
+    
+    return false;
+}
+
+void TeleportBridge::StopHotspot() {
+    if (engine_ && hotspotActive_.load()) {
+        teleport_destroy_hotspot(engine_);
+        hotspotActive_.store(false);
+        memset(&hotspotInfo_, 0, sizeof(hotspotInfo_));
+    }
+}
+
 } // namespace teleport::ui
+

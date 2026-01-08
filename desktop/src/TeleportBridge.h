@@ -186,6 +186,45 @@ public:
     void OnComplete(TeleportError error);
     int OnIncoming(const TeleportDevice* sender, const TeleportFileInfo* files, size_t count);
 
+    // ============ QR Pairing ============
+    
+    /**
+     * @brief Generate QR pairing info and bitmap
+     */
+    bool GenerateQrPairing(int expirySeconds = 300);
+    
+    /**
+     * @brief Get current QR pairing info
+     */
+    TeleportQrPairingInfo GetQrPairingInfo() const { return qrInfo_; }
+    
+    /**
+     * @brief Get QR bitmap data (BMP format)
+     */
+    const std::vector<uint8_t>& GetQrImageData() const { return qrImageData_; }
+
+    // ============ Hotspot Mode ============
+    
+    /**
+     * @brief Create and start hotspot
+     */
+    bool StartHotspot();
+    
+    /**
+     * @brief Stop hotspot
+     */
+    void StopHotspot();
+    
+    /**
+     * @brief Check if hotspot is active
+     */
+    bool IsHotspotActive() const { return hotspotActive_.load(); }
+    
+    /**
+     * @brief Get hotspot info
+     */
+    TeleportHotspotInfo GetHotspotInfo() const { return hotspotInfo_; }
+
 private:
     TeleportEngine* engine_ = nullptr;
     TeleportTransfer* currentTransfer_ = nullptr;
@@ -208,6 +247,15 @@ private:
     
     // Animation state
     float lastUpdateTime_ = 0.0f;
+    
+    // QR Pairing state
+    TeleportQrPairingInfo qrInfo_ = {};
+    std::vector<uint8_t> qrImageData_;
+    
+    // Hotspot state  
+    std::atomic<bool> hotspotActive_{false};
+    TeleportHotspotInfo hotspotInfo_ = {};
 };
 
 } // namespace teleport::ui
+

@@ -85,6 +85,23 @@ typedef enum TeleportError {
     TELEPORT_ERROR_NETWORK_UNREACHABLE = -17,
     TELEPORT_ERROR_DEVICE_NOT_FOUND = -18,
     TELEPORT_ERROR_TRANSFER_FAILED = -19,
+    TELEPORT_ERROR_NOT_SUPPORTED = -20,
+    
+    /* WiFi Direct errors */
+    TELEPORT_ERROR_WIFI_DIRECT_NOT_AVAILABLE = -30,
+    TELEPORT_ERROR_WIFI_DIRECT_BUSY = -31,
+    TELEPORT_ERROR_WIFI_DIRECT_FAILED = -32,
+    
+    /* QR Pairing errors */
+    TELEPORT_ERROR_QR_INVALID = -40,
+    TELEPORT_ERROR_QR_EXPIRED = -41,
+    TELEPORT_ERROR_QR_GENERATION_FAILED = -42,
+    
+    /* Hotspot errors */
+    TELEPORT_ERROR_HOTSPOT_FAILED = -50,
+    TELEPORT_ERROR_HOTSPOT_PERMISSION = -51,
+    TELEPORT_ERROR_HOTSPOT_ALREADY_ACTIVE = -52,
+    
     TELEPORT_ERROR_INTERNAL = -100
 } TeleportError;
 
@@ -417,8 +434,186 @@ TELEPORT_API void teleport_format_bytes(uint64_t bytes, char* out_str, size_t st
  */
 TELEPORT_API void teleport_format_duration(int32_t seconds, char* out_str, size_t str_size);
 
+/* ============================================================================
+ * WiFi Direct P2P
+ * ============================================================================ */
+
+/**
+ * @brief WiFi Direct peer information
+ */
+typedef struct TeleportWifiDirectPeer {
+    char mac_address[18];              /**< MAC address (e.g., "AA:BB:CC:DD:EE:FF") */
+    char device_name[TELEPORT_MAX_DEVICE_NAME]; /**< Peer device name */
+    char device_type[32];              /**< Device category (e.g., "Computer", "Phone") */
+    int signal_strength;               /**< Signal strength in dBm */
+    int is_group_owner;                /**< Non-zero if peer is group owner */
+} TeleportWifiDirectPeer;
+
+/**
+ * @brief WiFi Direct connection info
+ */
+typedef struct TeleportWifiDirectConnection {
+    char peer_mac[18];                 /**< Connected peer MAC */
+    char peer_name[TELEPORT_MAX_DEVICE_NAME]; /**< Connected peer name */
+    char group_owner_ip[46];           /**< IP of group owner for TCP connections */
+    char local_ip[46];                 /**< Our IP in the P2P network */
+    int is_group_owner;                /**< Non-zero if we are group owner */
+} TeleportWifiDirectConnection;
+
+/** Callback for WiFi Direct peer discovery */
+typedef void (*TeleportWifiDirectPeerCallback)(const TeleportWifiDirectPeer* peer, void* user_data);
+
+/** Callback for WiFi Direct connection */
+typedef void (*TeleportWifiDirectConnectedCallback)(const TeleportWifiDirectConnection* conn, void* user_data);
+
+/**
+ * @brief Check if WiFi Direct is supported on this device
+ */
+TELEPORT_API int teleport_wifi_direct_is_supported(void);
+
+/**
+ * @brief Start WiFi Direct peer discovery
+ */
+TELEPORT_API TeleportError teleport_wifi_direct_start_discovery(
+    TeleportEngine* engine,
+    TeleportWifiDirectPeerCallback on_peer_found,
+    TeleportWifiDirectPeerCallback on_peer_lost,
+    void* user_data
+);
+
+/**
+ * @brief Stop WiFi Direct peer discovery
+ */
+TELEPORT_API TeleportError teleport_wifi_direct_stop_discovery(TeleportEngine* engine);
+
+/**
+ * @brief Connect to a WiFi Direct peer
+ */
+TELEPORT_API TeleportError teleport_wifi_direct_connect(
+    TeleportEngine* engine,
+    const char* mac_address,
+    TeleportWifiDirectConnectedCallback on_connected,
+    void* user_data
+);
+
+/**
+ * @brief Disconnect from WiFi Direct peer
+ */
+TELEPORT_API TeleportError teleport_wifi_direct_disconnect(TeleportEngine* engine);
+
+/* ============================================================================
+ * QR Code Pairing
+ * ============================================================================ */
+
+/**
+ * @brief QR pairing information
+ */
+typedef struct TeleportQrPairingInfo {
+    char ip[46];                       /**< Host IP address */
+    uint16_t port;                     /**< Control port */
+    char session_token[33];            /**< Session token (32 hex chars + null) */
+    char device_name[TELEPORT_MAX_DEVICE_NAME]; /**< Host device name */
+    int64_t expires_at_ms;             /**< Expiry timestamp (Unix ms) */
+} TeleportQrPairingInfo;
+
+/**
+ * @brief Generate QR code for device pairing
+ * @param engine Engine handle
+ * @param out_info Output pairing info
+ * @param out_qr_data Output QR bitmap data (BMP format)
+ * @param qr_data_size In: max size; Out: actual size
+ * @param expiry_seconds Seconds until expiry (0 = default 5 min)
+ * @return TELEPORT_OK on success
+ */
+TELEPORT_API TeleportError teleport_generate_qr_pairing(
+    TeleportEngine* engine,
+    TeleportQrPairingInfo* out_info,
+    uint8_t* out_qr_data,
+    size_t* qr_data_size,
+    int expiry_seconds
+);
+
+/**
+ * @brief Connect to a device via scanned QR code data
+ * @param engine Engine handle
+ * @param qr_json_data JSON string from scanned QR code
+ * @return TELEPORT_OK on success, error code otherwise
+ */
+TELEPORT_API TeleportError teleport_connect_via_qr(
+    TeleportEngine* engine,
+    const char* qr_json_data
+);
+
+/**
+ * @brief Validate QR pairing data
+ * @param qr_json_data JSON string from scanned QR code
+ * @param out_info Output pairing info (if valid)
+ * @return TELEPORT_OK if valid, error code otherwise
+ */
+TELEPORT_API TeleportError teleport_validate_qr_pairing(
+    const char* qr_json_data,
+    TeleportQrPairingInfo* out_info
+);
+
+/* ============================================================================
+ * Hotspot Mode
+ * ============================================================================ */
+
+/**
+ * @brief Hotspot information
+ */
+typedef struct TeleportHotspotInfo {
+    char ssid[64];                     /**< WiFi network name */
+    char password[64];                 /**< WiFi password */
+    char gateway_ip[46];               /**< IP address of hotspot host */
+    uint16_t control_port;             /**< Teleport control port */
+    int is_active;                     /**< Non-zero if hotspot is active */
+    int client_count;                  /**< Number of connected clients */
+} TeleportHotspotInfo;
+
+/**
+ * @brief Check if hotspot creation is supported
+ */
+TELEPORT_API int teleport_hotspot_is_supported(void);
+
+/**
+ * @brief Create and start a WiFi hotspot
+ * @param engine Engine handle
+ * @param out_info Output hotspot info (SSID, password, etc.)
+ * @return TELEPORT_OK on success
+ */
+TELEPORT_API TeleportError teleport_create_hotspot(
+    TeleportEngine* engine,
+    TeleportHotspotInfo* out_info
+);
+
+/**
+ * @brief Stop and destroy the hotspot
+ */
+TELEPORT_API TeleportError teleport_destroy_hotspot(TeleportEngine* engine);
+
+/**
+ * @brief Get current hotspot status
+ */
+TELEPORT_API TeleportError teleport_get_hotspot_info(
+    TeleportEngine* engine,
+    TeleportHotspotInfo* out_info
+);
+
+/**
+ * @brief Check if connected to a Teleport hotspot
+ * @param out_gateway_ip Output gateway IP if connected to hotspot
+ * @param ip_size Size of output buffer
+ * @return TELEPORT_OK if connected to hotspot, error otherwise
+ */
+TELEPORT_API TeleportError teleport_detect_hotspot(
+    char* out_gateway_ip,
+    size_t ip_size
+);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* TELEPORT_H */
+

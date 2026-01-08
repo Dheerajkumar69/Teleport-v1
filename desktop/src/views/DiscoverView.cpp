@@ -1,6 +1,6 @@
 /**
  * @file DiscoverView.cpp
- * @brief Device discovery view with animated cards
+ * @brief Device discovery view with delightful animations
  */
 
 #include "DiscoverView.h"
@@ -18,25 +18,142 @@ static const char* OS_LABEL_ANDROID = "A";
 static const char* OS_LABEL_MACOS = "M";
 static const char* OS_LABEL_UNKNOWN = "?";
 
+// Celebration colors - vibrant confetti palette
+static const ImU32 CONFETTI_COLORS[] = {
+    IM_COL32(255, 107, 107, 255),  // Coral
+    IM_COL32(78, 205, 196, 255),   // Teal
+    IM_COL32(255, 230, 109, 255),  // Yellow
+    IM_COL32(170, 111, 217, 255),  // Purple
+    IM_COL32(95, 239, 145, 255),   // Green
+    IM_COL32(255, 159, 243, 255),  // Pink
+};
+
 DiscoverView::DiscoverView(TeleportBridge* bridge, Theme* theme)
     : bridge_(bridge), theme_(theme) {}
 
+void DiscoverView::TriggerCelebration() {
+    celebrating_ = true;
+    celebrationTimer_ = 0.0f;
+    successGlow_ = 1.0f;
+    
+    // Spawn confetti particles
+    particles_.clear();
+    std::uniform_real_distribution<float> xDist(0.0f, ImGui::GetIO().DisplaySize.x);
+    std::uniform_real_distribution<float> vxDist(-100.0f, 100.0f);
+    std::uniform_real_distribution<float> vyDist(-400.0f, -200.0f);
+    std::uniform_real_distribution<float> sizeDist(4.0f, 12.0f);
+    std::uniform_int_distribution<int> colorDist(0, 5);
+    
+    for (int i = 0; i < 80; i++) {
+        Particle p;
+        p.x = xDist(rng_);
+        p.y = ImGui::GetIO().DisplaySize.y + 50.0f;
+        p.vx = vxDist(rng_);
+        p.vy = vyDist(rng_);
+        p.life = 1.0f;
+        p.size = sizeDist(rng_);
+        p.color = CONFETTI_COLORS[colorDist(rng_)];
+        particles_.push_back(p);
+    }
+}
+
+void DiscoverView::UpdateParticles(float dt) {
+    for (auto& p : particles_) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 600.0f * dt;  // Gravity
+        p.life -= dt * 0.4f;
+        p.vx *= 0.99f;  // Drag
+    }
+    
+    // Remove dead particles
+    particles_.erase(
+        std::remove_if(particles_.begin(), particles_.end(),
+            [](const Particle& p) { return p.life <= 0 || p.y > 2000; }),
+        particles_.end()
+    );
+    
+    if (particles_.empty()) {
+        celebrating_ = false;
+    }
+}
+
+void DiscoverView::RenderCelebration() {
+    if (!celebrating_ && particles_.empty()) return;
+    
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    
+    for (const auto& p : particles_) {
+        float alpha = std::min(1.0f, p.life * 2.0f);
+        ImU32 color = (p.color & 0x00FFFFFF) | (static_cast<ImU32>(alpha * 255) << 24);
+        
+        // Draw as rotated rectangles for confetti effect
+        float angle = p.x * 0.05f + p.y * 0.03f;
+        float s = sin(angle) * p.size * 0.5f;
+        float c = cos(angle) * p.size * 0.5f;
+        
+        ImVec2 points[4] = {
+            ImVec2(p.x - c - s, p.y - s + c),
+            ImVec2(p.x + c - s, p.y + s + c),
+            ImVec2(p.x + c + s, p.y + s - c),
+            ImVec2(p.x - c + s, p.y - s - c),
+        };
+        drawList->AddConvexPolyFilled(points, 4, color);
+    }
+}
+
 void DiscoverView::Update() {
-    // Update pulse animation
-    pulseAnimation_ += 0.05f;
+    float dt = ImGui::GetIO().DeltaTime;
+    
+    // Update pulse animation (smooth sine wave)
+    pulseAnimation_ += dt * 3.0f;
     if (pulseAnimation_ > 6.28f) pulseAnimation_ = 0.0f;
     
     // Update empty state animation
     if (bridge_->GetDevices().empty()) {
-        emptyStateAnim_ += 0.03f;
+        emptyStateAnim_ += dt * 1.5f;
+    }
+    
+    // Update celebration particles
+    if (celebrating_) {
+        celebrationTimer_ += dt;
+        UpdateParticles(dt);
+    }
+    
+    // Decay success glow smoothly
+    if (successGlow_ > 0) {
+        successGlow_ -= dt * 0.8f;
+        if (successGlow_ < 0) successGlow_ = 0;
+    }
+    
+    // Decay modal fade in
+    if (showQrModal_ || showHotspotModal_) {
+        if (modalFadeIn_ < 1.0f) {
+            modalFadeIn_ += dt * 6.0f;
+            if (modalFadeIn_ > 1.0f) modalFadeIn_ = 1.0f;
+        }
+    } else {
+        modalFadeIn_ = 0.0f;
     }
 }
 
 void DiscoverView::Render() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(30, 20));
     
+    // Subtle success glow overlay
+    if (successGlow_ > 0.01f) {
+        ImDrawList* bgList = ImGui::GetBackgroundDrawList();
+        ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+        ImU32 glowColor = ImGui::ColorConvertFloat4ToU32(
+            ImVec4(0.2f, 0.9f, 0.4f, successGlow_ * 0.15f)
+        );
+        bgList->AddRectFilled(ImVec2(0, 0), displaySize, glowColor);
+    }
+    
     RenderHeader();
     ImGui::Spacing();
+    ImGui::Spacing();
+    RenderConnectionMethods();
     ImGui::Spacing();
     RenderStatusBar();
     ImGui::Spacing();
@@ -50,17 +167,20 @@ void DiscoverView::Render() {
     }
     
     ImGui::PopStyleVar();
+    
+    // Render modals
+    RenderQrModal();
+    RenderHotspotModal();
+    
+    // Render celebration on top
+    RenderCelebration();
 }
+
 
 void DiscoverView::RenderHeader() {
     ImGui::PushFont(theme_->GetHeadingFont());
-    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "Discover Devices");
+    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "Send Files");
     ImGui::PopFont();
-    
-    ImGui::SameLine(0, 20);
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8);
-    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), 
-        "Find devices on your local network");
 }
 
 void DiscoverView::RenderStatusBar() {
@@ -345,4 +465,232 @@ void DiscoverView::RenderEmptyState() {
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextDisabled), "%s", helpText);
 }
 
+void DiscoverView::RenderConnectionMethods() {
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+    
+    // Section header - simplified
+    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "Alternative methods:");
+    ImGui::SameLine(0, 15);
+    
+    // QR Code button - primary alternative
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.486f, 0.228f, 0.929f, 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.586f, 0.328f, 1.0f, 0.9f));
+    if (ImGui::Button("  QR Code  ", ImVec2(100, 32))) {
+        if (bridge_->GenerateQrPairing(qrExpirySeconds_)) {
+            qrImageData_ = bridge_->GetQrImageData();
+            auto info = bridge_->GetQrPairingInfo();
+            qrSessionToken_ = info.session_token;
+        }
+        showQrModal_ = true;
+    }
+    ImGui::PopStyleColor(2);
+    
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Scan with phone to connect instantly");
+    }
+    
+    ImGui::SameLine(0, 8);
+    
+    // Hotspot button - sync state 
+    hotspotActive_ = bridge_->IsHotspotActive();
+    if (hotspotActive_) {
+        auto info = bridge_->GetHotspotInfo();
+        hotspotSsid_ = info.ssid;
+        hotspotPassword_ = info.password;
+        hotspotGatewayIp_ = info.gateway_ip;
+    }
+    
+    ImGui::PushStyleColor(ImGuiCol_Button, 
+        hotspotActive_ ? ImVec4(0.063f, 0.725f, 0.506f, 0.8f) : ImVec4(0.2f, 0.2f, 0.22f, 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, 
+        hotspotActive_ ? ImVec4(0.1f, 0.8f, 0.56f, 0.9f) : ImVec4(0.3f, 0.3f, 0.32f, 0.9f));
+    
+    const char* hotspotLabel = hotspotActive_ ? " Hotspot ON " : " Hotspot ";
+    if (ImGui::Button(hotspotLabel, ImVec2(110, 32))) {
+        showHotspotModal_ = true;
+    }
+    ImGui::PopStyleColor(2);
+    
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(hotspotActive_ ? "View hotspot details" : "No WiFi? Create a hotspot");
+    }
+    
+    ImGui::PopStyleVar();
+}
+
+void DiscoverView::RenderQrModal() {
+    if (!showQrModal_) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(380, 420), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.08f, 0.1f, 0.98f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(25, 20));
+    
+    if (ImGui::Begin("Pair with Phone", &showQrModal_, 
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
+        
+        // Simple centered title
+        float titleWidth = ImGui::CalcTextSize("Scan with Teleport app").x;
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - titleWidth) / 2);
+        ImGui::PushFont(theme_->GetHeadingFont());
+        ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "Scan with Teleport app");
+        ImGui::PopFont();
+        
+        ImGui::Spacing();
+        ImGui::Spacing();
+        
+        // QR Code centered
+        float qrSize = 220.0f;
+        ImVec2 qrPos = ImGui::GetCursorScreenPos();
+        qrPos.x += (ImGui::GetContentRegionAvail().x - qrSize) * 0.5f;
+        
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // White background for QR
+        drawList->AddRectFilled(qrPos, 
+            ImVec2(qrPos.x + qrSize, qrPos.y + qrSize),
+            IM_COL32(255, 255, 255, 255), 8.0f);
+        
+        // Placeholder text
+        drawList->AddText(ImVec2(qrPos.x + qrSize * 0.35f, qrPos.y + qrSize * 0.45f),
+            IM_COL32(0, 0, 0, 255), "QR Code");
+        
+        ImGui::Dummy(ImVec2(qrSize, qrSize + 10));
+        
+        ImGui::Spacing();
+        
+        // Simple instruction
+        const char* helpText = "Open Teleport on your phone and tap 'Scan QR'";
+        float helpWidth = ImGui::CalcTextSize(helpText).x;
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - helpWidth) / 2);
+        ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "%s", helpText);
+        
+        ImGui::Spacing();
+        ImGui::Spacing();
+        
+        // New code button
+        float buttonWidth = 120.0f;
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
+        ImGui::PushStyleColor(ImGuiCol_Button, theme_->GetColorVec(ThemeColor::Primary));
+        if (ImGui::Button("New Code", ImVec2(buttonWidth, 36))) {
+            qrExpirySeconds_ = 300;
+            bridge_->GenerateQrPairing(qrExpirySeconds_);
+            qrImageData_ = bridge_->GetQrImageData();
+        }
+        ImGui::PopStyleColor();
+    }
+    ImGui::End();
+    
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+}
+
+void DiscoverView::RenderHotspotModal() {
+    if (!showHotspotModal_) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(380, 280), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.08f, 0.1f, 0.98f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(25, 20));
+    
+    if (ImGui::Begin("Direct Connect", &showHotspotModal_, 
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
+        
+        if (hotspotActive_) {
+            // Active state - show connection info prominently
+            float titleWidth = ImGui::CalcTextSize("Hotspot Ready!").x;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - titleWidth) / 2);
+            ImGui::PushFont(theme_->GetHeadingFont());
+            ImGui::TextColored(ImVec4(0.063f, 0.725f, 0.506f, 1.0f), "Hotspot Ready!");
+            ImGui::PopFont();
+            
+            ImGui::Spacing();
+            ImGui::Spacing();
+            
+            // Connection info - simple layout
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "WiFi Name:");
+            ImGui::SameLine(120);
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%s", 
+                hotspotSsid_.empty() ? "Teleport" : hotspotSsid_.c_str());
+            
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "Password:");
+            ImGui::SameLine(120);
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%s",
+                hotspotPassword_.empty() ? "********" : hotspotPassword_.c_str());
+            
+            ImGui::Spacing();
+            ImGui::Spacing();
+            
+            // Simple instruction
+            const char* helpText = "Connect your phone to this network";
+            float helpWidth = ImGui::CalcTextSize(helpText).x;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - helpWidth) / 2);
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "%s", helpText);
+            
+            ImGui::Spacing();
+            ImGui::Spacing();
+            
+            // Stop button
+            float buttonWidth = 120.0f;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.15f, 0.15f, 0.8f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.6f, 0.2f, 0.2f, 0.9f));
+            if (ImGui::Button("Turn Off", ImVec2(buttonWidth, 36))) {
+                bridge_->StopHotspot();
+                hotspotActive_ = false;
+                hotspotSsid_.clear();
+                hotspotPassword_.clear();
+                hotspotGatewayIp_.clear();
+            }
+            ImGui::PopStyleColor(2);
+        } else {
+            // Inactive state - simple explanation + button
+            float titleWidth = ImGui::CalcTextSize("No WiFi?").x;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - titleWidth) / 2);
+            ImGui::PushFont(theme_->GetHeadingFont());
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "No WiFi?");
+            ImGui::PopFont();
+            
+            ImGui::Spacing();
+            ImGui::Spacing();
+            
+            // Simple centered explanation
+            const char* helpText = "Create a temporary network for direct transfers";
+            float helpWidth = ImGui::CalcTextSize(helpText).x;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - helpWidth) / 2);
+            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "%s", helpText);
+            
+            ImGui::Spacing();
+            ImGui::Spacing();
+            ImGui::Spacing();
+            
+            // Start button
+            float buttonWidth = 160.0f;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
+            ImGui::PushStyleColor(ImGuiCol_Button, theme_->GetColorVec(ThemeColor::Primary));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme_->GetColorVec(ThemeColor::PrimaryLight));
+            if (ImGui::Button("Create Hotspot", ImVec2(buttonWidth, 44))) {
+                if (bridge_->StartHotspot()) {
+                    auto info = bridge_->GetHotspotInfo();
+                    hotspotActive_ = true;
+                    hotspotSsid_ = info.ssid;
+                    hotspotPassword_ = info.password;
+                    hotspotGatewayIp_ = info.gateway_ip;
+                }
+            }
+            ImGui::PopStyleColor(2);
+        }
+    }
+    ImGui::End();
+    
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+}
+
 } // namespace teleport::ui
+
+

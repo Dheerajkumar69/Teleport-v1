@@ -341,7 +341,7 @@ Result<void> ControlServer::perform_handshake(pal::TcpSocket& socket, Device& se
 Result<void> ControlServer::receive_files(
     pal::TcpSocket& socket,
     const std::vector<FileInfo>& files,
-    uint16_t data_port
+    [[maybe_unused]] uint16_t data_port
 ) {
     MessageReader reader(socket);
     MessageWriter writer(socket);

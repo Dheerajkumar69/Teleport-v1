@@ -317,6 +317,9 @@ public:
     const T& operator*() const { return value(); }
     T& operator*() { return value(); }
     
+    const T* operator->() const { return &(*m_value); }
+    T* operator->() { return &(*m_value); }
+    
 private:
     std::optional<T> m_value;
     Error m_error;

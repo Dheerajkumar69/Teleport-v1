@@ -84,6 +84,11 @@ std::string get_primary_local_ip();
  */
 std::string get_broadcast_address();
 
+/**
+ * @brief Get the default gateway IP address
+ */
+std::string get_default_gateway();
+
 /* ============================================================================
  * Socket Abstraction
  * ============================================================================ */

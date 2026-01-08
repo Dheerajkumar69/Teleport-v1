@@ -10,6 +10,9 @@
 #include "control/control_client.hpp"
 #include "transfer/transfer_manager.hpp"
 #include "platform/pal.hpp"
+#include "platform/hotspot.hpp"
+#include "platform/wifi_direct.hpp"
+#include "pairing/qr_pairing.hpp"
 #include "utils/logger.hpp"
 
 #include <memory>
@@ -30,10 +33,24 @@ struct TeleportEngine {
     teleport::pal::PlatformGuard platform_guard;
     std::string last_error;
     
+    // Hotspot and WiFi Direct
+    std::unique_ptr<teleport::Hotspot> hotspot;
+    std::unique_ptr<teleport::WifiDirect> wifi_direct;
+    
+    // QR Pairing state
+    teleport::QrPairingInfo current_qr_pairing;
+    std::vector<uint8_t> qr_image_data;
+    
     // Callbacks
     TeleportDeviceCallback on_device = nullptr;
     TeleportDeviceLostCallback on_device_lost = nullptr;
     void* callback_data = nullptr;
+    
+    // WiFi Direct callbacks
+    TeleportWifiDirectPeerCallback on_wd_peer_found = nullptr;
+    TeleportWifiDirectPeerCallback on_wd_peer_lost = nullptr;
+    TeleportWifiDirectConnectedCallback on_wd_connected = nullptr;
+    void* wd_callback_data = nullptr;
 };
 
 /**
@@ -490,4 +507,358 @@ TELEPORT_API void teleport_format_duration(int32_t seconds, char* out_str, size_
     }
 }
 
+/* ============================================================================
+ * WiFi Direct P2P
+ * ============================================================================ */
+
+TELEPORT_API int teleport_wifi_direct_is_supported(void) {
+    return is_wifi_direct_supported() ? 1 : 0;
+}
+
+TELEPORT_API TeleportError teleport_wifi_direct_start_discovery(
+    TeleportEngine* engine,
+    TeleportWifiDirectPeerCallback on_peer_found,
+    TeleportWifiDirectPeerCallback on_peer_lost,
+    void* user_data
+) {
+    if (!engine) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    // Create WiFi Direct instance if needed
+    if (!engine->wifi_direct) {
+        engine->wifi_direct = create_wifi_direct();
+        if (!engine->wifi_direct || !engine->wifi_direct->is_available()) {
+            return TELEPORT_ERROR_WIFI_DIRECT_NOT_AVAILABLE;
+        }
+    }
+    
+    engine->on_wd_peer_found = on_peer_found;
+    engine->on_wd_peer_lost = on_peer_lost;
+    engine->wd_callback_data = user_data;
+    
+    auto result = engine->wifi_direct->start_discovery(
+        [engine](const WifiDirectPeer& peer) {
+            if (engine->on_wd_peer_found) {
+                TeleportWifiDirectPeer c_peer = {};
+                strncpy(c_peer.mac_address, peer.mac_address.c_str(), sizeof(c_peer.mac_address) - 1);
+                strncpy(c_peer.device_name, peer.device_name.c_str(), sizeof(c_peer.device_name) - 1);
+                strncpy(c_peer.device_type, peer.device_type.c_str(), sizeof(c_peer.device_type) - 1);
+                c_peer.signal_strength = peer.signal_strength;
+                c_peer.is_group_owner = peer.is_group_owner ? 1 : 0;
+                engine->on_wd_peer_found(&c_peer, engine->wd_callback_data);
+            }
+        },
+        [engine](const std::string& mac) {
+            if (engine->on_wd_peer_lost) {
+                TeleportWifiDirectPeer c_peer = {};
+                strncpy(c_peer.mac_address, mac.c_str(), sizeof(c_peer.mac_address) - 1);
+                engine->on_wd_peer_lost(&c_peer, engine->wd_callback_data);
+            }
+        }
+    );
+    
+    if (!result) {
+        LOG_ERROR("WiFi Direct discovery failed: ", result.error().message);
+        return TELEPORT_ERROR_WIFI_DIRECT_FAILED;
+    }
+    
+    LOG_INFO("WiFi Direct discovery started");
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_wifi_direct_stop_discovery(TeleportEngine* engine) {
+    if (!engine || !engine->wifi_direct) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    engine->wifi_direct->stop_discovery();
+    LOG_INFO("WiFi Direct discovery stopped");
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_wifi_direct_connect(
+    TeleportEngine* engine,
+    const char* mac_address,
+    TeleportWifiDirectConnectedCallback on_connected,
+    void* user_data
+) {
+    if (!engine || !mac_address) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    if (!engine->wifi_direct || !engine->wifi_direct->is_available()) {
+        return TELEPORT_ERROR_WIFI_DIRECT_NOT_AVAILABLE;
+    }
+    
+    engine->on_wd_connected = on_connected;
+    engine->wd_callback_data = user_data;
+    
+    auto result = engine->wifi_direct->connect(mac_address,
+        [engine](const WifiDirectConnection& conn) {
+            if (engine->on_wd_connected) {
+                TeleportWifiDirectConnection c_conn = {};
+                strncpy(c_conn.peer_mac, conn.peer_mac.c_str(), sizeof(c_conn.peer_mac) - 1);
+                strncpy(c_conn.peer_name, conn.peer_name.c_str(), sizeof(c_conn.peer_name) - 1);
+                strncpy(c_conn.group_owner_ip, conn.group_owner_ip.c_str(), sizeof(c_conn.group_owner_ip) - 1);
+                strncpy(c_conn.local_ip, conn.local_ip.c_str(), sizeof(c_conn.local_ip) - 1);
+                c_conn.is_group_owner = conn.is_group_owner ? 1 : 0;
+                engine->on_wd_connected(&c_conn, engine->wd_callback_data);
+            }
+        },
+        [](int code, const std::string& msg) {
+            LOG_ERROR("WiFi Direct connect error ", code, ": ", msg);
+        }
+    );
+    
+    if (!result) {
+        return TELEPORT_ERROR_WIFI_DIRECT_FAILED;
+    }
+    
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_wifi_direct_disconnect(TeleportEngine* engine) {
+    if (!engine || !engine->wifi_direct) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    engine->wifi_direct->disconnect();
+    return TELEPORT_OK;
+}
+
+/* ============================================================================
+ * QR Code Pairing
+ * ============================================================================ */
+
+TELEPORT_API TeleportError teleport_generate_qr_pairing(
+    TeleportEngine* engine,
+    TeleportQrPairingInfo* out_info,
+    uint8_t* out_qr_data,
+    size_t* qr_data_size,
+    int expiry_seconds
+) {
+    if (!engine || !out_info || !qr_data_size) {
+        return TELEPORT_ERROR_INVALID_ARGUMENT;
+    }
+    
+    // Get local IP
+    std::string ip = pal::get_primary_local_ip();
+    if (ip.empty() || ip == "127.0.0.1") {
+        engine->last_error = "No network connection";
+        return TELEPORT_ERROR_NETWORK_UNREACHABLE;
+    }
+    
+    // Get control port (from discovery if running)
+    uint16_t port = engine->discovery ? engine->discovery->self().address.port : TELEPORT_CONTROL_PORT_MIN;
+    
+    // Generate pairing info
+    int expiry = expiry_seconds > 0 ? expiry_seconds : 300;
+    engine->current_qr_pairing = generate_pairing_info(ip, port, engine->config.device_name, expiry);
+    
+    // Copy to output struct
+    strncpy(out_info->ip, engine->current_qr_pairing.ip.c_str(), sizeof(out_info->ip) - 1);
+    out_info->port = engine->current_qr_pairing.port;
+    strncpy(out_info->session_token, engine->current_qr_pairing.session_token.c_str(), sizeof(out_info->session_token) - 1);
+    strncpy(out_info->device_name, engine->current_qr_pairing.device_name.c_str(), sizeof(out_info->device_name) - 1);
+    out_info->expires_at_ms = engine->current_qr_pairing.expires_at_ms;
+    
+    // Generate QR code image if buffer provided
+    if (out_qr_data && *qr_data_size > 0) {
+        auto qr_result = generate_pairing_qr(engine->current_qr_pairing, 8);
+        if (!qr_result) {
+            LOG_ERROR("QR generation failed: ", qr_result.error().message);
+            return TELEPORT_ERROR_QR_GENERATION_FAILED;
+        }
+        
+        engine->qr_image_data = std::move(*qr_result);
+        
+        if (engine->qr_image_data.size() <= *qr_data_size) {
+            memcpy(out_qr_data, engine->qr_image_data.data(), engine->qr_image_data.size());
+            *qr_data_size = engine->qr_image_data.size();
+        } else {
+            *qr_data_size = engine->qr_image_data.size();  // Return required size
+            return TELEPORT_ERROR_OUT_OF_MEMORY;
+        }
+    }
+    
+    LOG_INFO("Generated QR pairing: ", ip, ":", port, " expires in ", expiry, "s");
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_connect_via_qr(
+    TeleportEngine* engine,
+    const char* qr_json_data
+) {
+    if (!engine || !qr_json_data) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    // Decode and validate
+    auto decode_result = decode_pairing_from_json(qr_json_data);
+    if (!decode_result) {
+        engine->last_error = decode_result.error().message;
+        return TELEPORT_ERROR_QR_INVALID;
+    }
+    
+    auto validation = validate_pairing_info(*decode_result);
+    if (validation != QrValidationResult::Valid) {
+        engine->last_error = validation_result_to_string(validation);
+        if (validation == QrValidationResult::Expired) {
+            return TELEPORT_ERROR_QR_EXPIRED;
+        }
+        return TELEPORT_ERROR_QR_INVALID;
+    }
+    
+    // Create a synthetic device from QR info
+    Device qr_device;
+    qr_device.id = decode_result->session_token;
+    qr_device.name = decode_result->device_name;
+    qr_device.address.ip = decode_result->ip;
+    qr_device.address.port = decode_result->port;
+    qr_device.os = OperatingSystem::Unknown;
+    qr_device.capabilities = Capability::None;
+    
+    // Add to discovery list temporarily
+    if (engine->discovery) {
+        engine->discovery->devices().upsert(qr_device);
+    }
+    
+    LOG_INFO("QR pairing: added device ", qr_device.name, " at ", qr_device.address.ip, ":", qr_device.address.port);
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_validate_qr_pairing(
+    const char* qr_json_data,
+    TeleportQrPairingInfo* out_info
+) {
+    if (!qr_json_data) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    auto decode_result = decode_pairing_from_json(qr_json_data);
+    if (!decode_result) {
+        return TELEPORT_ERROR_QR_INVALID;
+    }
+    
+    auto validation = validate_pairing_info(*decode_result);
+    if (validation != QrValidationResult::Valid) {
+        if (validation == QrValidationResult::Expired) {
+            return TELEPORT_ERROR_QR_EXPIRED;
+        }
+        return TELEPORT_ERROR_QR_INVALID;
+    }
+    
+    if (out_info) {
+        strncpy(out_info->ip, decode_result->ip.c_str(), sizeof(out_info->ip) - 1);
+        out_info->port = decode_result->port;
+        strncpy(out_info->session_token, decode_result->session_token.c_str(), sizeof(out_info->session_token) - 1);
+        strncpy(out_info->device_name, decode_result->device_name.c_str(), sizeof(out_info->device_name) - 1);
+        out_info->expires_at_ms = decode_result->expires_at_ms;
+    }
+    
+    return TELEPORT_OK;
+}
+
+/* ============================================================================
+ * Hotspot Mode
+ * ============================================================================ */
+
+TELEPORT_API int teleport_hotspot_is_supported(void) {
+#ifdef _WIN32
+    return 1;  // Windows supports hotspot via TetheringManager
+#elif defined(__ANDROID__)
+    return 1;  // Android 8+ supports Local-only Hotspot
+#else
+    return 0;
+#endif
+}
+
+TELEPORT_API TeleportError teleport_create_hotspot(
+    TeleportEngine* engine,
+    TeleportHotspotInfo* out_info
+) {
+    if (!engine || !out_info) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    // Create hotspot instance if needed
+    if (!engine->hotspot) {
+        engine->hotspot = create_hotspot();
+        if (!engine->hotspot) {
+            engine->last_error = "Failed to create hotspot";
+            return TELEPORT_ERROR_HOTSPOT_FAILED;
+        }
+    }
+    
+    if (engine->hotspot->is_active()) {
+        return TELEPORT_ERROR_HOTSPOT_ALREADY_ACTIVE;
+    }
+    
+    // Configure hotspot
+    HotspotConfig config;
+    config.ssid = generate_hotspot_ssid();
+    config.password = generate_hotspot_password();
+    
+    auto result = engine->hotspot->create(config);
+    if (!result) {
+        engine->last_error = result.error().message;
+        LOG_ERROR("Hotspot creation failed: ", result.error().message);
+        return TELEPORT_ERROR_HOTSPOT_FAILED;
+    }
+    
+    // Copy info to output
+    auto info = engine->hotspot->get_info();
+    strncpy(out_info->ssid, info.ssid.c_str(), sizeof(out_info->ssid) - 1);
+    strncpy(out_info->password, info.password.c_str(), sizeof(out_info->password) - 1);
+    strncpy(out_info->gateway_ip, info.gateway_ip.c_str(), sizeof(out_info->gateway_ip) - 1);
+    out_info->control_port = engine->discovery ? engine->discovery->self().address.port : TELEPORT_CONTROL_PORT_MIN;
+    out_info->is_active = 1;
+    out_info->client_count = 0;
+    
+    LOG_INFO("Hotspot created: ", info.ssid, " / ", info.password);
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_destroy_hotspot(TeleportEngine* engine) {
+    if (!engine) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    if (engine->hotspot) {
+        engine->hotspot->destroy();
+        LOG_INFO("Hotspot destroyed");
+    }
+    
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_get_hotspot_info(
+    TeleportEngine* engine,
+    TeleportHotspotInfo* out_info
+) {
+    if (!engine || !out_info) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    memset(out_info, 0, sizeof(TeleportHotspotInfo));
+    
+    if (!engine->hotspot || !engine->hotspot->is_active()) {
+        out_info->is_active = 0;
+        return TELEPORT_OK;
+    }
+    
+    auto info = engine->hotspot->get_info();
+    strncpy(out_info->ssid, info.ssid.c_str(), sizeof(out_info->ssid) - 1);
+    strncpy(out_info->password, info.password.c_str(), sizeof(out_info->password) - 1);
+    strncpy(out_info->gateway_ip, info.gateway_ip.c_str(), sizeof(out_info->gateway_ip) - 1);
+    out_info->control_port = engine->discovery ? engine->discovery->self().address.port : TELEPORT_CONTROL_PORT_MIN;
+    out_info->is_active = 1;
+    out_info->client_count = static_cast<int>(engine->hotspot->get_connected_clients().size());
+    
+    return TELEPORT_OK;
+}
+
+TELEPORT_API TeleportError teleport_detect_hotspot(
+    char* out_gateway_ip,
+    size_t ip_size
+) {
+    if (!out_gateway_ip || ip_size < 16) return TELEPORT_ERROR_INVALID_ARGUMENT;
+    
+    // Check if we're connected to a Teleport hotspot by looking for typical gateway patterns
+    std::string gateway = pal::get_default_gateway();
+    
+    // Check if gateway looks like a mobile hotspot (192.168.43.x, 192.168.137.x, etc.)
+    if (gateway.find("192.168.43.") == 0 ||
+        gateway.find("192.168.137.") == 0 ||
+        gateway.find("192.168.49.") == 0) {
+        strncpy(out_gateway_ip, gateway.c_str(), ip_size - 1);
+        out_gateway_ip[ip_size - 1] = '\0';
+        return TELEPORT_OK;
+    }
+    
+    return TELEPORT_ERROR_DEVICE_NOT_FOUND;
+}
+
 } // extern "C"
+

@@ -1,79 +1,94 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# TeleportMobile
 
-# Getting Started
+React Native mobile app for high-speed P2P file transfer.
 
->**Note**: Make sure you have completed the [React Native - Environment Setup](https://reactnative.dev/docs/environment-setup) instructions till "Creating a new application" step, before proceeding.
+## Prerequisites
 
-## Step 1: Start the Metro Server
+- Node.js 20+
+- JDK 21 (from Android Studio: `C:\Program Files\Android\Android Studio\jbr`)
+- Android SDK (via Android Studio SDK Manager)
+- NDK 27.0.12077973
 
-First, you will need to start **Metro**, the JavaScript _bundler_ that ships _with_ React Native.
+## Building from Command Line
 
-To start Metro, run the following command from the _root_ of your React Native project:
+**No Android Studio IDE required!** Just need the SDK/NDK tools installed.
 
-```bash
-# using npm
+### 1. Set environment variables (PowerShell)
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+```
+
+### 2. Install dependencies
+
+```powershell
+npm install
+```
+
+### 3. Build debug APK
+
+```powershell
+cd android
+.\gradlew assembleDebug --no-daemon
+```
+
+APK will be at: `android/app/build/outputs/apk/debug/app-debug.apk`
+
+### 4. Install on connected device
+
+```powershell
+adb install android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+## Running the App (Development)
+
+### Start Metro bundler
+
+```powershell
 npm start
-
-# OR using Yarn
-yarn start
 ```
 
-## Step 2: Start your Application
+### Run on Android device/emulator (in another terminal)
 
-Let Metro Bundler run in its _own_ terminal. Open a _new_ terminal from the _root_ of your React Native project. Run the following command to start your _Android_ or _iOS_ app:
-
-### For Android
-
-```bash
-# using npm
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
-### For iOS
+## Testing with a Physical Device
 
-```bash
-# using npm
-npm run ios
+1. Enable **Developer Options** (Settings > About > tap Build Number 7x)
+2. Enable **USB Debugging** in Developer Options
+3. Connect phone via USB
+4. Authorize computer when prompted on phone
+5. Run `npm run android`
 
-# OR using Yarn
-yarn ios
+## Architecture
+
+```
+TeleportMobile/
+├── App.tsx                    # Main UI (Discover/Send/Receive tabs)
+├── src/
+│   └── TeleportService.ts     # TypeScript API for native module
+├── android/
+│   └── app/src/main/
+│       ├── java/.../          # Kotlin native module
+│       │   ├── TeleportModule.kt
+│       │   └── TeleportPackage.kt
+│       └── cpp/               # C++ JNI bridge
+│           ├── CMakeLists.txt
+│           └── teleport_rn.cpp
+└── core/ (parent dir)         # Shared C++ Teleport engine
 ```
 
-If everything is set up _correctly_, you should see your new app running in your _Android Emulator_ or _iOS Simulator_ shortly provided you have set up your emulator/simulator correctly.
+## Features
 
-This is one way to run your app — you can also run it directly from within Android Studio and Xcode respectively.
+- 🔍 **Discover**: Find other Teleport devices on the network
+- 📁 **Send**: Select and send files to discovered devices  
+- 📥 **Receive**: Accept incoming file transfers
 
-## Step 3: Modifying your App
+## License
 
-Now that you have successfully run the app, let's modify it.
-
-1. Open `App.tsx` in your text editor of choice and edit some lines.
-2. For **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Developer Menu** (<kbd>Ctrl</kbd> + <kbd>M</kbd> (on Window and Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (on macOS)) to see your changes!
-
-   For **iOS**: Hit <kbd>Cmd ⌘</kbd> + <kbd>R</kbd> in your iOS Simulator to reload the app and see your changes!
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [Introduction to React Native](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you can't get this to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+MIT

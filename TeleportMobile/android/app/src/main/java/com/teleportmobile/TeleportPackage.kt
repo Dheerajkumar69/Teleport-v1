@@ -7,10 +7,17 @@ import com.facebook.react.uimanager.ViewManager
 
 class TeleportPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(TeleportModule(reactContext))
+        return listOf(
+            TeleportModule(reactContext),
+            WifiDirectManager(reactContext),
+            HotspotManager(reactContext),
+            QrScannerManager(reactContext)
+        )
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
         return emptyList()
     }
 }
+
+

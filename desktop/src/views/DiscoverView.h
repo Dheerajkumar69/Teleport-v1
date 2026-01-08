@@ -1,15 +1,27 @@
 /**
  * @file DiscoverView.h
- * @brief Device discovery view with animated device cards
+ * @brief Device discovery view with delightful animations
  */
 
 #pragma once
 
+#include "imgui.h"
 #include "TeleportBridge.h"
 #include "Theme.h"
 #include <string>
+#include <vector>
+#include <random>
 
 namespace teleport::ui {
+
+// Celebration particle for success effects
+struct Particle {
+    float x, y;
+    float vx, vy;
+    float life;
+    float size;
+    ImU32 color;
+};
 
 class DiscoverView {
 public:
@@ -18,6 +30,9 @@ public:
 
     void Update();
     void Render();
+    
+    // Trigger celebration on transfer complete
+    void TriggerCelebration();
     
     /**
      * @brief Check if user requested to send to a device
@@ -31,10 +46,15 @@ public:
 
 private:
     void RenderHeader();
+    void RenderConnectionMethods();
     void RenderDeviceGrid();
     void RenderDeviceCard(const DeviceInfo& device, int index);
     void RenderEmptyState();
     void RenderStatusBar();
+    void RenderQrModal();
+    void RenderHotspotModal();
+    void RenderCelebration();
+    void UpdateParticles(float dt);
 
     TeleportBridge* bridge_;
     Theme* theme_;
@@ -43,8 +63,32 @@ private:
     float pulseAnimation_ = 0.0f;
     float emptyStateAnim_ = 0.0f;
     float cardHoverAnim_[32] = {0};  // Max 32 devices
+    float cardScaleAnim_[32] = {0};  // Scale bounce on hover
+    float modalFadeIn_ = 0.0f;       // Modal fade animation
+    float successGlow_ = 0.0f;       // Success glow effect
     std::string selectedDeviceId_;
-    std::string sendRequestDeviceId_;  // Set when Send button clicked
+    std::string sendRequestDeviceId_;
+    
+    // Celebration particles
+    std::vector<Particle> particles_;
+    bool celebrating_ = false;
+    float celebrationTimer_ = 0.0f;
+    std::mt19937 rng_{std::random_device{}()};
+    
+    // Modal states
+    bool showQrModal_ = false;
+    bool showHotspotModal_ = false;
+    std::vector<uint8_t> qrImageData_;
+    std::string qrSessionToken_;
+    int qrExpirySeconds_ = 300;
+    
+    // Hotspot state
+    bool hotspotActive_ = false;
+    std::string hotspotSsid_;
+    std::string hotspotPassword_;
+    std::string hotspotGatewayIp_;
 };
 
 } // namespace teleport::ui
+
+

@@ -5,6 +5,8 @@ add_library(teleport_core STATIC
     
     # Platform abstraction
     src/platform/pal.cpp
+    src/platform/hotspot_win.cpp
+    src/platform/wifi_direct_win.cpp
     
     # Discovery
     src/discovery/discovery.cpp
@@ -22,6 +24,10 @@ add_library(teleport_core STATIC
     src/transfer/chunk_writer.cpp
     src/transfer/stream_pool.cpp
     
+    # Pairing
+    src/pairing/qr_pairing.cpp
+    src/pairing/third_party/qrcodegen.cpp
+    
     # Security
     src/security/token.cpp
     
@@ -37,6 +43,7 @@ target_include_directories(teleport_core PUBLIC
 
 target_include_directories(teleport_core PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pairing
 )
 
 # Define TELEPORT_STATIC for static library builds (no dllimport/dllexport)
@@ -69,6 +76,7 @@ if(GTest_FOUND)
         tests/test_transfer.cpp
         tests/test_uuid.cpp
         tests/test_sanitize.cpp
+        tests/test_qr_pairing.cpp
     )
     
     target_link_libraries(teleport_tests PRIVATE

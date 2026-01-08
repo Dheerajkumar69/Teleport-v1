@@ -37,6 +37,16 @@ inline const char* error_to_string(TeleportError err) {
         case TELEPORT_ERROR_NETWORK_UNREACHABLE: return "Network unreachable";
         case TELEPORT_ERROR_DEVICE_NOT_FOUND: return "Device not found";
         case TELEPORT_ERROR_TRANSFER_FAILED: return "Transfer failed";
+        case TELEPORT_ERROR_NOT_SUPPORTED: return "Feature not supported";
+        case TELEPORT_ERROR_WIFI_DIRECT_NOT_AVAILABLE: return "WiFi Direct not available";
+        case TELEPORT_ERROR_WIFI_DIRECT_BUSY: return "WiFi Direct busy";
+        case TELEPORT_ERROR_WIFI_DIRECT_FAILED: return "WiFi Direct operation failed";
+        case TELEPORT_ERROR_QR_INVALID: return "Invalid QR code";
+        case TELEPORT_ERROR_QR_EXPIRED: return "QR code expired";
+        case TELEPORT_ERROR_QR_GENERATION_FAILED: return "QR code generation failed";
+        case TELEPORT_ERROR_HOTSPOT_FAILED: return "Hotspot creation failed";
+        case TELEPORT_ERROR_HOTSPOT_PERMISSION: return "Hotspot permission denied";
+        case TELEPORT_ERROR_HOTSPOT_ALREADY_ACTIVE: return "Hotspot already active";
         case TELEPORT_ERROR_INTERNAL: return "Internal error";
         default: return "Unknown error";
     }
