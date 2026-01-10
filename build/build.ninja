@@ -773,6 +773,16 @@ build desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj: CXX_COM
   OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\views
   TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
 
+build desktop/CMakeFiles/TeleportUI.dir/src/views/SettingsView.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/views/SettingsView.cpp || cmake_object_order_depends_target_TeleportUI
+  CONFIG = Release
+  DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
+  DEP_FILE = desktop\CMakeFiles\TeleportUI.dir\src\views\SettingsView.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"D:/CODES/actual projects/Teleport/desktop/imgui" -I"D:/CODES/actual projects/Teleport/desktop/imgui/backends" -I"D:/CODES/actual projects/Teleport/desktop/src" -I"D:/CODES/actual projects/Teleport/core/include" -I"D:/CODES/actual projects/Teleport/build/_deps/json-src/include"
+  OBJECT_DIR = desktop\CMakeFiles\TeleportUI.dir
+  OBJECT_FILE_DIR = desktop\CMakeFiles\TeleportUI.dir\src\views
+  TARGET_SUPPORT_DIR = desktop\CMakeFiles\TeleportUI.dir
+
 build desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj: CXX_COMPILER__TeleportUI_unscanned_Release D$:/CODES/actual$ projects/Teleport/desktop/src/components/DeviceCard.cpp || cmake_object_order_depends_target_TeleportUI
   CONFIG = Release
   DEFINES = -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601
@@ -900,7 +910,7 @@ build desktop/CMakeFiles/TeleportUI.dir/resources/app.rc.obj: RC_COMPILER__Telep
 #############################################
 # Link the executable desktop\Teleport.exe
 
-build desktop/Teleport.exe: CXX_EXECUTABLE_LINKER__TeleportUI_Release desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/Theme.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/TransferProgress.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/FileDropZone.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/Animations.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_demo.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_draw.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_tables.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_widgets.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_win32.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_dx11.cpp.obj desktop/CMakeFiles/TeleportUI.dir/resources/app.rc.obj | core/libteleport_core.a || core/libteleport_core.a
+build desktop/Teleport.exe: CXX_EXECUTABLE_LINKER__TeleportUI_Release desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/Theme.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/views/SettingsView.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/TransferProgress.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/FileDropZone.cpp.obj desktop/CMakeFiles/TeleportUI.dir/src/components/Animations.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_demo.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_draw.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_tables.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_widgets.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_win32.cpp.obj desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_dx11.cpp.obj desktop/CMakeFiles/TeleportUI.dir/resources/app.rc.obj | core/libteleport_core.a || core/libteleport_core.a
   CONFIG = Release
   FLAGS = -O3 -DNDEBUG
   LINK_FLAGS = -mwindows

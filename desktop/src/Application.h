@@ -1,6 +1,6 @@
 /**
  * @file Application.h
- * @brief Main application class managing window and rendering
+ * @brief Main application class with 5-tab navigation
  */
 
 #pragma once
@@ -18,38 +18,26 @@
 #include "views/SendView.h"
 #include "views/ReceiveView.h"
 #include "views/TransfersView.h"
+#include "views/SettingsView.h"
 
 namespace teleport::ui {
 
 using Microsoft::WRL::ComPtr;
 
 /**
- * @brief Main application managing the window and rendering loop
+ * @brief Main application with 5-tab interface
+ * 
+ * Tabs: Discover | Send | Receive | Transfers | Settings
  */
 class Application {
 public:
     Application();
     ~Application();
 
-    /**
-     * @brief Initialize the application window and DirectX
-     */
     bool Initialize(HINSTANCE hInstance, int nCmdShow);
-
-    /**
-     * @brief Run the main message/render loop
-     * @return Exit code
-     */
     int Run();
 
-    /**
-     * @brief Get window handle
-     */
     HWND GetHwnd() const { return hwnd_; }
-
-    /**
-     * @brief Get window dimensions
-     */
     void GetWindowSize(int& width, int& height) const;
 
 private:
@@ -66,7 +54,7 @@ private:
     void RenderSidebar();
     void RenderMainContent();
     void RenderSettingsPlaceholder();
-    void RenderGlobalIncomingDialog();  // Shows incoming transfer popup globally
+    void RenderGlobalIncomingDialog();
     
     // Window procedure
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -90,13 +78,14 @@ private:
     std::unique_ptr<TeleportBridge> bridge_;
     std::unique_ptr<Theme> theme_;
     
-    // Views
+    // Views - All 5 tabs
     std::unique_ptr<DiscoverView> discoverView_;
     std::unique_ptr<SendView> sendView_;
     std::unique_ptr<ReceiveView> receiveView_;
     std::unique_ptr<TransfersView> transfersView_;
+    std::unique_ptr<SettingsView> settingsView_;
     
-    // Navigation
+    // Navigation - 5 tabs
     enum class Tab {
         Discover,
         Send,
@@ -105,11 +94,11 @@ private:
         Settings
     };
     Tab currentTab_ = Tab::Discover;
+    Tab previousTab_ = Tab::Discover;
     
     // Animation state
     float sidebarHoverAnim_[5] = {0};
-    float tabTransition_ = 0.0f;
-    Tab previousTab_ = Tab::Discover;
+    float tabTransition_ = 1.0f;
 };
 
 } // namespace teleport::ui

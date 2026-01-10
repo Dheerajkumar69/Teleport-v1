@@ -70,13 +70,14 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow) {
 
     // Initialize Teleport bridge
     bridge_ = std::make_unique<TeleportBridge>();
-    bridge_->Initialize(); // Non-fatal if fails
+    bridge_->Initialize();
 
-    // Initialize views
+    // Initialize all 5 views
     discoverView_ = std::make_unique<DiscoverView>(bridge_.get(), theme_.get());
     sendView_ = std::make_unique<SendView>(bridge_.get(), theme_.get());
     receiveView_ = std::make_unique<ReceiveView>(bridge_.get(), theme_.get());
     transfersView_ = std::make_unique<TransfersView>(bridge_.get(), theme_.get());
+    settingsView_ = std::make_unique<SettingsView>(bridge_.get(), theme_.get());
 
     // Apply blur effect
     EnableBlurBehind();
@@ -306,7 +307,7 @@ int Application::Run() {
             }
         }
         
-        // Update views
+        // Update all views
         if (discoverView_) {
             discoverView_->Update();
             
@@ -322,6 +323,7 @@ int Application::Run() {
         if (sendView_) sendView_->Update();
         if (receiveView_) receiveView_->Update();
         if (transfersView_) transfersView_->Update();
+        if (settingsView_) settingsView_->Update();
         
         Render();
     }
@@ -404,7 +406,7 @@ void Application::RenderSidebar() {
     
     ImGui::BeginChild("##Sidebar", ImVec2(sidebarWidth, (float)windowHeight), false);
     
-    // Navigation items
+    // 5 navigation items
     struct NavItem {
         const char* icon;
         const char* tooltip;
@@ -492,19 +494,21 @@ void Application::RenderSidebar() {
     ImGui::EndChild();
 }
 
+
 void Application::RenderMainContent() {
     int windowWidth, windowHeight;
     GetWindowSize(windowWidth, windowHeight);
     
-    const float sidebarWidth = 70.0f;
+    const float sidebarWidth = 70.0f;  // Match sidebar width
     const float contentWidth = windowWidth - sidebarWidth - 10;
     
     ImGui::BeginChild("##MainContent", ImVec2(contentWidth, (float)windowHeight), false);
     
-    tabTransition_ += (1.0f - tabTransition_) * 0.12f;
+    tabTransition_ += (1.0f - tabTransition_) * 0.15f;
     
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, tabTransition_);
     
+    // Handle all 5 tabs
     switch (currentTab_) {
         case Tab::Discover:
             if (discoverView_) discoverView_->Render();
@@ -519,7 +523,7 @@ void Application::RenderMainContent() {
             if (transfersView_) transfersView_->Render();
             break;
         case Tab::Settings:
-            RenderSettingsPlaceholder();
+            if (settingsView_) settingsView_->Render();
             break;
     }
     
@@ -529,14 +533,20 @@ void Application::RenderMainContent() {
 }
 
 void Application::RenderSettingsPlaceholder() {
-    ImGui::SetCursorPos(ImVec2(40, 30));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(30, 20));
+    
     ImGui::PushFont(theme_->GetHeadingFont());
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "Settings");
     ImGui::PopFont();
     
-    ImGui::SetCursorPos(ImVec2(40, 80));
+    ImGui::Spacing();
+    ImGui::Spacing();
+    
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "Coming soon...");
+    
+    ImGui::PopStyleVar();
 }
+
 
 void Application::RenderGlobalIncomingDialog() {
     ImVec2 displaySize = ImGui::GetIO().DisplaySize;

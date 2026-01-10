@@ -205,6 +205,12 @@
 },
 {
   "directory": "D:/CODES/actual projects/Teleport/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/desktop/imgui\" -I\"D:/CODES/actual projects/Teleport/desktop/imgui/backends\" -I\"D:/CODES/actual projects/Teleport/desktop/src\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o desktop\\CMakeFiles\\TeleportUI.dir\\src\\views\\SettingsView.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\desktop\\src\\views\\SettingsView.cpp\"",
+  "file": "D:/CODES/actual projects/Teleport/desktop/src/views/SettingsView.cpp",
+  "output": "D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/TeleportUI.dir/src/views/SettingsView.cpp.obj"
+},
+{
+  "directory": "D:/CODES/actual projects/Teleport/build",
   "command": "C:\\msys64\\ucrt64\\bin\\c++.exe -DNOMINMAX -DTELEPORT_STATIC -DTELEPORT_WINDOWS -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0601 -I\"D:/CODES/actual projects/Teleport/desktop/imgui\" -I\"D:/CODES/actual projects/Teleport/desktop/imgui/backends\" -I\"D:/CODES/actual projects/Teleport/desktop/src\" -I\"D:/CODES/actual projects/Teleport/core/include\" -I\"D:/CODES/actual projects/Teleport/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o desktop\\CMakeFiles\\TeleportUI.dir\\src\\components\\DeviceCard.cpp.obj -c \"D:\\CODES\\actual projects\\Teleport\\desktop\\src\\components\\DeviceCard.cpp\"",
   "file": "D:/CODES/actual projects/Teleport/desktop/src/components/DeviceCard.cpp",
   "output": "D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj"

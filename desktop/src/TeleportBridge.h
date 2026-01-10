@@ -100,6 +100,11 @@ public:
      */
     std::vector<DeviceInfo> GetDevices() const;
 
+    /**
+     * @brief Add a device manually by IP address
+     */
+    void AddManualDevice(const char* ip, uint16_t port, const char* name);
+
     // ============ Sending ============
 
     /**
@@ -133,6 +138,16 @@ public:
      * @brief Set download directory
      */
     void SetDownloadPath(const std::string& path) { downloadPath_ = path; }
+
+    /**
+     * @brief Set device name
+     */
+    void SetDeviceName(const char* name) { deviceName_ = name ? name : ""; }
+
+    /**
+     * @brief Get device name
+     */
+    std::string GetDeviceName() const { return deviceName_; }
 
     // ============ Transfers ============
 
@@ -244,6 +259,7 @@ private:
     std::atomic<int> pendingRequestResponse_{-1}; // -1=pending, 0=reject, 1=accept
     
     std::string downloadPath_;
+    std::string deviceName_;
     
     // Animation state
     float lastUpdateTime_ = 0.0f;

@@ -1,6 +1,6 @@
 /**
  * @file ReceiveView.cpp
- * @brief File receiving view with folder selector and status
+ * @brief File receiving view with celebrations
  */
 
 #include "ReceiveView.h"
@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <shobjidl.h>
 #include <cmath>
+#include <algorithm>
 
 // Local Lerp function for animations
 static inline float Lerp(float a, float b, float t) {
@@ -17,10 +18,20 @@ static inline float Lerp(float a, float b, float t) {
 
 namespace teleport::ui {
 
+// Confetti colors for celebration
+static const unsigned int RECEIVE_CONFETTI_COLORS[] = {
+    IM_COL32(78, 205, 196, 255),   // Teal
+    IM_COL32(255, 230, 109, 255),  // Yellow
+    IM_COL32(95, 239, 145, 255),   // Green
+    IM_COL32(147, 112, 219, 255),  // Purple
+    IM_COL32(255, 159, 243, 255),  // Pink
+    IM_COL32(16, 185, 129, 255),   // Success green
+};
+
 // Text labels (fallback when icon fonts unavailable)
-static const char* ICON_DOWNLOAD = "v";    // Download arrow
-static const char* ICON_FOLDER = ">";      // Folder
-static const char* ICON_CHECK = "+";       // Checkmark
+static const char* ICON_DOWNLOAD = "v";
+static const char* ICON_FOLDER = ">";
+static const char* ICON_CHECK = "+";
 
 ReceiveView::ReceiveView(TeleportBridge* bridge, Theme* theme)
     : bridge_(bridge), theme_(theme) {
@@ -28,6 +39,8 @@ ReceiveView::ReceiveView(TeleportBridge* bridge, Theme* theme)
 }
 
 void ReceiveView::Update() {
+    float dt = ImGui::GetIO().DeltaTime;
+    
     // Animate toggle
     float targetToggle = bridge_->IsReceiving() ? 1.0f : 0.0f;
     toggleAnim_ += (targetToggle - toggleAnim_) * 0.15f;
@@ -37,6 +50,29 @@ void ReceiveView::Update() {
         pulseAnim_ += 0.05f;
         if (pulseAnim_ > 6.28f) pulseAnim_ = 0.0f;
     }
+    
+    // Check for receive completion to trigger celebration
+    auto transfers = bridge_->GetTransfers();
+    for (const auto& t : transfers) {
+        if (!t.isSending && t.state == TELEPORT_STATE_COMPLETE) {
+            if (lastTransferId_ != t.id) {
+                lastTransferId_ = t.id;
+                TriggerCelebration();
+            }
+        }
+    }
+    
+    // Update celebration particles
+    if (celebrating_) {
+        celebrationTimer_ += dt;
+        UpdateParticles(dt);
+        successGlow_ *= 0.97f;
+        
+        if (celebrationTimer_ > 3.0f) {
+            celebrating_ = false;
+            particles_.clear();
+        }
+    }
 }
 
 void ReceiveView::Render() {
@@ -45,6 +81,10 @@ void ReceiveView::Render() {
     RenderHeader();
     ImGui::Spacing();
     ImGui::Spacing();
+    
+    // Show progress if receiving
+    RenderProgressBar();
+    
     RenderStatus();
     ImGui::Spacing();
     ImGui::Spacing();
@@ -60,6 +100,9 @@ void ReceiveView::Render() {
     }
     
     ImGui::PopStyleVar();
+    
+    // Celebration overlay
+    RenderCelebration();
 }
 
 void ReceiveView::RenderHeader() {
@@ -71,6 +114,58 @@ void ReceiveView::RenderHeader() {
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8);
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), 
         "Accept files from other devices");
+}
+
+void ReceiveView::RenderProgressBar() {
+    auto transfers = bridge_->GetTransfers();
+    
+    for (const auto& t : transfers) {
+        if (t.isSending || t.state != TELEPORT_STATE_TRANSFERRING) continue;
+        
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        float width = ImGui::GetContentRegionAvail().x;
+        float height = 12.0f;
+        
+        // Background track
+        drawList->AddRectFilled(
+            pos, ImVec2(pos.x + width, pos.y + height),
+            theme_->GetColor(ThemeColor::SurfaceLight), 6.0f
+        );
+        
+        // Progress calculation
+        float progress = (float)t.bytesTransferred / std::max(t.bytesTotal, (uint64_t)1);
+        
+        // Progress fill with success green gradient
+        ImVec4 startColor(0.063f, 0.725f, 0.506f, 1.0f);  // Success green
+        ImVec4 endColor(0.2f, 0.85f, 0.6f, 1.0f);         // Lighter green
+        
+        drawList->AddRectFilledMultiColor(
+            pos, ImVec2(pos.x + width * progress, pos.y + height),
+            ImGui::ColorConvertFloat4ToU32(startColor),
+            ImGui::ColorConvertFloat4ToU32(endColor),
+            ImGui::ColorConvertFloat4ToU32(endColor),
+            ImGui::ColorConvertFloat4ToU32(startColor)
+        );
+        
+        // Glow effect
+        float glowIntensity = 0.3f + 0.2f * std::sin(ImGui::GetTime() * 4.0f);
+        ImU32 glowColor = IM_COL32(16, 185, 129, (int)(glowIntensity * 100));
+        drawList->AddRect(
+            ImVec2(pos.x - 2, pos.y - 2), 
+            ImVec2(pos.x + width * progress + 2, pos.y + height + 2),
+            glowColor, 8.0f, 0, 3.0f
+        );
+        
+        // Show percentage
+        char progressText[32];
+        snprintf(progressText, sizeof(progressText), "Receiving... %.0f%%", progress * 100);
+        ImGui::Dummy(ImVec2(width, height + 5));
+        ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "%s", progressText);
+        ImGui::Spacing();
+        
+        break;  // Only show first active transfer
+    }
 }
 
 void ReceiveView::RenderStatus() {
@@ -372,6 +467,107 @@ void ReceiveView::RenderIncomingDialog() {
     }
     
     ImGui::PopStyleColor(2);
+}
+
+// ============ Celebration Effects ============
+
+void ReceiveView::TriggerCelebration() {
+    celebrating_ = true;
+    celebrationTimer_ = 0.0f;
+    successGlow_ = 1.0f;
+    
+    // Play success sound
+    PlaySuccessSound();
+    
+    // Spawn confetti particles
+    particles_.clear();
+    std::uniform_real_distribution<float> xDist(0.0f, ImGui::GetIO().DisplaySize.x);
+    std::uniform_real_distribution<float> vxDist(-150.0f, 150.0f);
+    std::uniform_real_distribution<float> vyDist(-500.0f, -250.0f);
+    std::uniform_real_distribution<float> sizeDist(6.0f, 14.0f);
+    std::uniform_real_distribution<float> rotDist(0.0f, 6.28f);
+    std::uniform_int_distribution<int> colorDist(0, 5);
+    
+    for (int i = 0; i < 100; i++) {
+        ReceiveParticle p;
+        p.x = xDist(rng_);
+        p.y = ImGui::GetIO().DisplaySize.y + 50.0f;
+        p.vx = vxDist(rng_);
+        p.vy = vyDist(rng_);
+        p.life = 1.0f;
+        p.size = sizeDist(rng_);
+        p.rotation = rotDist(rng_);
+        p.color = RECEIVE_CONFETTI_COLORS[colorDist(rng_)];
+        particles_.push_back(p);
+    }
+}
+
+void ReceiveView::UpdateParticles(float dt) {
+    for (auto& p : particles_) {
+        // Gravity
+        p.vy += 600.0f * dt;
+        
+        // Air resistance
+        p.vx *= 0.99f;
+        
+        // Movement
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        
+        // Spin
+        p.rotation += p.vx * 0.01f * dt;
+        
+        // Fade out
+        if (p.y > ImGui::GetIO().DisplaySize.y * 0.7f) {
+            p.life -= dt * 0.8f;
+        }
+    }
+    
+    // Remove dead particles
+    particles_.erase(
+        std::remove_if(particles_.begin(), particles_.end(), 
+            [](const ReceiveParticle& p) { return p.life <= 0; }),
+        particles_.end()
+    );
+}
+
+void ReceiveView::RenderCelebration() {
+    if (!celebrating_ && particles_.empty()) return;
+    
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    
+    // Success glow overlay (green tint for receive)
+    if (successGlow_ > 0.01f) {
+        ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+        ImU32 glowColor = IM_COL32(
+            16, 185, 129, 
+            (int)(successGlow_ * 40)
+        );
+        drawList->AddRectFilled(ImVec2(0, 0), displaySize, glowColor);
+    }
+    
+    // Draw confetti particles
+    for (const auto& p : particles_) {
+        ImU32 color = (p.color & 0x00FFFFFF) | ((int)(p.life * 255) << 24);
+        
+        // Draw as rotated squares
+        float c = std::cos(p.rotation);
+        float s = std::sin(p.rotation);
+        float hs = p.size * 0.5f;
+        
+        ImVec2 corners[4] = {
+            ImVec2(p.x + (-hs * c - -hs * s), p.y + (-hs * s + -hs * c)),
+            ImVec2(p.x + (hs * c - -hs * s), p.y + (hs * s + -hs * c)),
+            ImVec2(p.x + (hs * c - hs * s), p.y + (hs * s + hs * c)),
+            ImVec2(p.x + (-hs * c - hs * s), p.y + (-hs * s + hs * c))
+        };
+        
+        drawList->AddQuadFilled(corners[0], corners[1], corners[2], corners[3], color);
+    }
+}
+
+void ReceiveView::PlaySuccessSound() {
+    MessageBeep(MB_OK);
 }
 
 } // namespace teleport::ui

@@ -21,22 +21,22 @@
 60079	70678	7895506004086630	cli/CMakeFiles/teleport_cli.dir/commands/discover.cpp.obj	db3baf4ff64d8093
 60495	72053	7895506008125695	cli/CMakeFiles/teleport_cli.dir/commands/send.cpp.obj	640805007ed811a8
 44038	74301	7895505843552189	core/CMakeFiles/teleport_core.dir/src/pairing/qr_pairing.cpp.obj	2f5d2b445b8fe217
-74307	77219	7895506146284301	core/libteleport_core.a	589458e887b05dfc
+4205	4949	7895508131834795	core/libteleport_core.a	a2bf690812736043
 70684	78493	7895506110025135	cli/CMakeFiles/teleport_cli.dir/ui/progress.cpp.obj	9efa1ff43fe6f827
 68069	79267	7895506083966081	cli/CMakeFiles/teleport_cli.dir/commands/receive.cpp.obj	468fb100c7ef9783
 72058	79644	7895506123831776	cli/CMakeFiles/teleport_cli.dir/ui/console.cpp.obj	f28c23979102fd9e
 79652	82660	7895506199682950	desktop/CMakeFiles/TeleportUI.dir/src/Theme.cpp.obj	55799e741ea3f90a
-77226	86036	7895506175480481	desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj	6f765e59a3b2fc0e
-82663	87560	7895506229814338	desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj	64186fe2bd3b3354
-78497	88513	7895506188140889	desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj	20d1267bead85437
-79270	91889	7895506195910695	desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj	7a905e03ef6d5c0f
-88516	92382	7895506288365466	desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj	f5650411272c5a19
-91891	94341	7895506322112931	desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj	42adec2fb7163e79
+45	3756	7897308911265336	desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj	6f765e59a3b2fc0e
+65	4146	7897308911459294	desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj	64186fe2bd3b3354
+53	6124	7897308911341826	desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj	20d1267bead85437
+59	7318	7897308911413426	desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj	7a905e03ef6d5c0f
+6124	7787	7897308972062676	desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj	f5650411272c5a19
+7319	8183	7897308984002303	desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj	42adec2fb7163e79
 92394	94558	7895506327188411	desktop/CMakeFiles/TeleportUI.dir/src/components/TransferProgress.cpp.obj	20ce582d2269f209
 94563	95467	7895506348842340	desktop/CMakeFiles/TeleportUI.dir/src/components/Animations.cpp.obj	e126eef569424660
-86040	95901	7895506263605541	desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj	718484006b7c58ab
+3758	8838	7897308948396158	desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj	718484006b7c58ab
 94344	96011	7895506346629605	desktop/CMakeFiles/TeleportUI.dir/src/components/FileDropZone.cpp.obj	2f28d218896572fb
-87561	96524	7895506278819725	desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj	5efe8cfc9aa8d669
+4146	8656	7897308952281896	desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj	5efe8cfc9aa8d669
 96525	109222	7895506368459570	desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_tables.cpp.obj	701c2de4b67dd7be
 95908	110506	7895506362240451	desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_demo.cpp.obj	eb36f2f975d7a33d
 110510	116862	7895506508287643	desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_win32.cpp.obj	c4478dfa06507ecf
@@ -45,17 +45,45 @@
 116866	122723	7895506571885835	desktop/CMakeFiles/TeleportUI.dir/imgui/backends/imgui_impl_dx11.cpp.obj	579badbcf82a4aab
 109226	131957	7895506495472557	desktop/CMakeFiles/TeleportUI.dir/imgui/imgui_widgets.cpp.obj	8c483e5d485c65fa
 95472	132635	7895506357893246	desktop/CMakeFiles/TeleportUI.dir/imgui/imgui.cpp.obj	c5fd1fd7927ab218
-24	1503	7895508089519645	build.ninja	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/cmake_install.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/_deps/json-build/cmake_install.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/core/cmake_install.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/cli/cmake_install.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/desktop/cmake_install.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/CTestTestfile.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/core/CTestTestfile.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/cli/CTestTestfile.cmake	fdef4a7462f10dc1
-24	1503	7895508089519645	D:/CODES/actual projects/Teleport/build/desktop/CTestTestfile.cmake	fdef4a7462f10dc1
+24	1503	7897309886059632	build.ninja	fdef4a7462f10dc1
+24	1503	7897309885749764	D:/CODES/actual projects/Teleport/build/cmake_install.cmake	fdef4a7462f10dc1
+24	1503	7897309885784896	D:/CODES/actual projects/Teleport/build/_deps/json-build/cmake_install.cmake	fdef4a7462f10dc1
+24	1503	7897309885856142	D:/CODES/actual projects/Teleport/build/core/cmake_install.cmake	fdef4a7462f10dc1
+24	1503	7897309885912428	D:/CODES/actual projects/Teleport/build/cli/cmake_install.cmake	fdef4a7462f10dc1
+24	1503	7897309885972228	D:/CODES/actual projects/Teleport/build/desktop/cmake_install.cmake	fdef4a7462f10dc1
+24	1503	7897309885759843	D:/CODES/actual projects/Teleport/build/CTestTestfile.cmake	fdef4a7462f10dc1
+24	1503	7897309885872062	D:/CODES/actual projects/Teleport/build/core/CTestTestfile.cmake	fdef4a7462f10dc1
+24	1503	7897309885925263	D:/CODES/actual projects/Teleport/build/cli/CTestTestfile.cmake	fdef4a7462f10dc1
+24	1503	7897309885997432	D:/CODES/actual projects/Teleport/build/desktop/CTestTestfile.cmake	fdef4a7462f10dc1
 32	4202	7895508090085036	core/CMakeFiles/teleport_core.dir/src/pairing/third_party/qrcodegen.cpp.obj	ed00f1b7f9b6f631
-4205	4949	7895508131834795	core/libteleport_core.a	a2bf690812736043
 4949	5551	7895508139253539	cli/teleport.exe	877fefb977283b71
-4960	5900	7895508139357198	desktop/Teleport.exe	2e88b743da115e88
+21005	27904	7897301621942570	desktop/Teleport.exe	2e88b743da115e88
+2	2548	7897309886059632	build.ninja	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/cmake_install.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/_deps/json-build/cmake_install.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/core/cmake_install.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/cli/cmake_install.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/desktop/cmake_install.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/CTestTestfile.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/core/CTestTestfile.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/cli/CTestTestfile.cmake	fdef4a7462f10dc1
+2	2548	7897309886059632	D:/CODES/actual projects/Teleport/build/desktop/CTestTestfile.cmake	fdef4a7462f10dc1
+11	1725	7897309886543127	desktop/CMakeFiles/TeleportUI.dir/src/views/SettingsView.cpp.obj	8b7f94203d5da70b
+1726	2082	7897309903696351	desktop/Teleport.exe	f5e91c3a837249f0
+11	2902	7897313065438073	desktop/CMakeFiles/TeleportUI.dir/src/main.cpp.obj	6f765e59a3b2fc0e
+16	3556	7897313065485956	desktop/CMakeFiles/TeleportUI.dir/src/Application.cpp.obj	20d1267bead85437
+20	4318	7897313065532529	desktop/CMakeFiles/TeleportUI.dir/src/TeleportBridge.cpp.obj	7a905e03ef6d5c0f
+7	4696	7897313065395876	core/CMakeFiles/teleport_core.dir/src/platform/hotspot_win.cpp.obj	39b229e2763a9a80
+3556	5669	7897313100887921	desktop/CMakeFiles/TeleportUI.dir/src/views/SendView.cpp.obj	718484006b7c58ab
+7	832	7897313985878869	core/libteleport_core.a	a2bf690812736043
+42	1016	7897313986240500	desktop/CMakeFiles/TeleportUI.dir/src/views/TransfersView.cpp.obj	f5650411272c5a19
+18	1510	7897313985999040	desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj	64186fe2bd3b3354
+1016	1671	7897313995984383	desktop/CMakeFiles/TeleportUI.dir/src/components/DeviceCard.cpp.obj	42adec2fb7163e79
+1510	1807	7897314000922528	cli/teleport.exe	877fefb977283b71
+34	2536	7897313986144040	desktop/CMakeFiles/TeleportUI.dir/src/views/ReceiveView.cpp.obj	5efe8cfc9aa8d669
+833	2796	7897313994147883	desktop/CMakeFiles/TeleportUI.dir/src/views/SettingsView.cpp.obj	8b7f94203d5da70b
+2796	3105	7897314013782458	desktop/Teleport.exe	f5e91c3a837249f0
+47	1859	7897323362049638	desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj	64186fe2bd3b3354
+1860	2418	7897323380178775	desktop/Teleport.exe	f5e91c3a837249f0
+62	3715	7897327797407182	desktop/CMakeFiles/TeleportUI.dir/src/views/DiscoverView.cpp.obj	64186fe2bd3b3354
+3716	4663	7897327833957055	desktop/Teleport.exe	f5e91c3a837249f0

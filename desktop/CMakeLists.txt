@@ -29,6 +29,7 @@ set(DESKTOP_SOURCES
     src/views/SendView.cpp
     src/views/ReceiveView.cpp
     src/views/TransfersView.cpp
+    src/views/SettingsView.cpp
     src/components/DeviceCard.cpp
     src/components/TransferProgress.cpp
     src/components/FileDropZone.cpp
@@ -43,6 +44,7 @@ set(DESKTOP_HEADERS
     src/views/SendView.h
     src/views/ReceiveView.h
     src/views/TransfersView.h
+    src/views/SettingsView.h
     src/components/DeviceCard.h
     src/components/TransferProgress.h
     src/components/FileDropZone.h

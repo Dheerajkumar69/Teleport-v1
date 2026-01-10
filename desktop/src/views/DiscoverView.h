@@ -53,6 +53,7 @@ private:
     void RenderStatusBar();
     void RenderQrModal();
     void RenderHotspotModal();
+    void RenderManualConnectModal();
     void RenderCelebration();
     void UpdateParticles(float dt);
 
@@ -78,6 +79,7 @@ private:
     // Modal states
     bool showQrModal_ = false;
     bool showHotspotModal_ = false;
+    bool showManualConnectModal_ = false;
     std::vector<uint8_t> qrImageData_;
     std::string qrSessionToken_;
     int qrExpirySeconds_ = 300;
@@ -87,6 +89,11 @@ private:
     std::string hotspotSsid_;
     std::string hotspotPassword_;
     std::string hotspotGatewayIp_;
+    
+    // Manual connect state
+    char manualIp_[64] = "";
+    char manualPort_[8] = "42000";
+    char manualName_[64] = "Remote Device";
 };
 
 } // namespace teleport::ui

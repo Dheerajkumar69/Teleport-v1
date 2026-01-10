@@ -1,6 +1,6 @@
 /**
  * @file SendView.cpp
- * @brief File sending view with drag & drop
+ * @brief File sending view with lovable micro-interactions
  */
 
 #include "SendView.h"
@@ -13,19 +13,66 @@
 
 namespace teleport::ui {
 
+// Confetti colors - vibrant celebration palette
+static const unsigned int CONFETTI_COLORS[] = {
+    IM_COL32(147, 112, 219, 255),  // Purple
+    IM_COL32(78, 205, 196, 255),   // Teal
+    IM_COL32(255, 230, 109, 255),  // Yellow
+    IM_COL32(95, 239, 145, 255),   // Green
+    IM_COL32(255, 159, 243, 255),  // Pink
+    IM_COL32(74, 222, 128, 255),   // Bright green
+};
+
 // Text labels (fallback when icon fonts unavailable)
-static const char* ICON_UPLOAD = "^";     // Upload arrow
-static const char* ICON_FILE = "*";       // File indicator
-static const char* ICON_FOLDER = ">";     // Folder indicator  
-static const char* ICON_CLOSE = "X";      // Close/remove
+static const char* ICON_UPLOAD = "^";
+static const char* ICON_FILE = "*";
+static const char* ICON_FOLDER = ">";
+static const char* ICON_CLOSE = "X";
 
 SendView::SendView(TeleportBridge* bridge, Theme* theme)
     : bridge_(bridge), theme_(theme) {}
 
 void SendView::Update() {
+    float dt = ImGui::GetIO().DeltaTime;
+    
     // Animate drop zone border
     float targetDrop = isDragging_ ? 1.0f : 0.0f;
     dropZoneAnim_ += (targetDrop - dropZoneAnim_) * 0.2f;
+    
+    // File drop flash effect
+    if (prevFileCount_ < (int)selectedFiles_.size()) {
+        fileDropFlash_ = 1.0f;
+    }
+    prevFileCount_ = (int)selectedFiles_.size();
+    fileDropFlash_ *= 0.9f;
+    
+    // Send button pulse when ready
+    bool canSend = !selectedFiles_.empty() && !selectedDeviceId_.empty();
+    sendButtonPulse_ += dt * 3.0f;
+    if (sendButtonPulse_ > 6.28f) sendButtonPulse_ = 0.0f;
+    
+    // Check for transfer completion to trigger celebration
+    auto transfers = bridge_->GetTransfers();
+    for (const auto& t : transfers) {
+        if (t.isSending && t.state == TELEPORT_STATE_COMPLETE) {
+            if (lastTransferId_ != t.id) {
+                lastTransferId_ = t.id;
+                TriggerCelebration();
+            }
+        }
+    }
+    
+    // Update celebration particles
+    if (celebrating_) {
+        celebrationTimer_ += dt;
+        UpdateParticles(dt);
+        successGlow_ *= 0.97f;
+        
+        if (celebrationTimer_ > 3.0f) {
+            celebrating_ = false;
+            particles_.clear();
+        }
+    }
 }
 
 void SendView::Render() {
@@ -34,6 +81,9 @@ void SendView::Render() {
     RenderHeader();
     ImGui::Spacing();
     ImGui::Spacing();
+    
+    // Show progress bar if transfer active
+    RenderProgressBar();
     
     // Two-column layout
     ImVec2 available = ImGui::GetContentRegionAvail();
@@ -60,6 +110,9 @@ void SendView::Render() {
     RenderSendButton();
     
     ImGui::PopStyleVar();
+    
+    // Celebration overlay on top of everything
+    RenderCelebration();
 }
 
 void SendView::RenderHeader() {
@@ -253,55 +306,115 @@ void SendView::RenderDeviceSelector() {
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImVec2 size(ImGui::GetContentRegionAvail().x, 100);
         
+        // Pulsing glow for "looking for devices"
+        float pulse = 0.3f + 0.1f * std::sin(ImGui::GetTime() * 2.0f);
+        ImVec4 bgColor = theme_->GetColorVec(ThemeColor::SurfaceLight);
+        bgColor.w = pulse + 0.5f;
+        
         drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-            theme_->GetColor(ThemeColor::SurfaceLight), Theme::CardRadius);
+            ImGui::ColorConvertFloat4ToU32(bgColor), Theme::CardRadius);
         
         ImVec2 center(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
         
-        const char* text = "No devices found";
-        ImVec2 textSize = ImGui::CalcTextSize(text);
-        ImGui::SetCursorScreenPos(ImVec2(center.x - textSize.x * 0.5f, center.y - 10));
-        ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextDisabled), "%s", text);
+        // Animated dots
+        float dotAnim = std::fmod(ImGui::GetTime(), 1.5f);
+        int dotCount = (int)(dotAnim / 0.5f) + 1;
+        std::string dots(dotCount, '.');
         
-        const char* hint = "Start discovery in Discover tab";
+        std::string text = "Looking for devices" + dots;
+        ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
+        ImGui::SetCursorScreenPos(ImVec2(center.x - textSize.x * 0.5f, center.y - 10));
+        ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "%s", text.c_str());
+        
+        const char* hint = "Make sure other devices are on the same network";
         ImVec2 hintSize = ImGui::CalcTextSize(hint);
         ImGui::SetCursorScreenPos(ImVec2(center.x - hintSize.x * 0.5f, center.y + 10));
         ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextDisabled), "%s", hint);
         
         ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + size.y));
     } else {
+        int idx = 0;
         for (const auto& device : devices) {
+            if (idx >= 16) break;  // Safety limit
+            
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             ImVec2 pos = ImGui::GetCursorScreenPos();
-            ImVec2 size(ImGui::GetContentRegionAvail().x, 60);
+            ImVec2 size(ImGui::GetContentRegionAvail().x, 65);
             
             bool isSelected = (selectedDeviceId_ == device.id);
+            bool isHovered = ImGui::IsMouseHoveringRect(pos, 
+                ImVec2(pos.x + size.x, pos.y + size.y));
             
-            // Background
-            ImU32 bgColor = isSelected 
-                ? theme_->GetColor(ThemeColor::Primary)
-                : theme_->GetColor(ThemeColor::SurfaceLight);
+            // Animate hover and selection
+            float targetHover = isHovered ? 1.0f : 0.0f;
+            deviceHoverAnim_[idx] += (targetHover - deviceHoverAnim_[idx]) * 0.2f;
             
-            drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                bgColor, Theme::CardRadius);
+            float targetScale = (isHovered || isSelected) ? 1.0f : 0.0f;
+            deviceScaleAnim_[idx] += (targetScale - deviceScaleAnim_[idx]) * 0.15f;
             
-            // Radio button indicator
+            float targetGlow = isSelected ? 1.0f : 0.0f;
+            deviceGlowAnim_[idx] += (targetGlow - deviceGlowAnim_[idx]) * 0.1f;
+            
+            // Scale effect (subtle)
+            float scale = 1.0f + deviceHoverAnim_[idx] * 0.015f;
+            ImVec2 scaledPos(
+                pos.x - (size.x * (scale - 1.0f)) * 0.5f,
+                pos.y - (size.y * (scale - 1.0f)) * 0.5f
+            );
+            ImVec2 scaledSize(size.x * scale, size.y * scale);
+            
+            // Glow effect for selected
+            if (deviceGlowAnim_[idx] > 0.01f) {
+                ImU32 glowColor = IM_COL32(147, 112, 219, (int)(deviceGlowAnim_[idx] * 60));
+                drawList->AddRect(
+                    ImVec2(scaledPos.x - 3, scaledPos.y - 3),
+                    ImVec2(scaledPos.x + scaledSize.x + 3, scaledPos.y + scaledSize.y + 3),
+                    glowColor, Theme::CardRadius + 3, 0, 4.0f
+                );
+            }
+            
+            // Background with hover effect
+            ImVec4 bgVec = isSelected ? 
+                theme_->GetColorVec(ThemeColor::Primary) : 
+                theme_->GetColorVec(ThemeColor::SurfaceLight);
+            if (!isSelected && deviceHoverAnim_[idx] > 0.01f) {
+                bgVec.x += 0.05f * deviceHoverAnim_[idx];
+                bgVec.y += 0.05f * deviceHoverAnim_[idx];
+                bgVec.z += 0.08f * deviceHoverAnim_[idx];
+            }
+            
+            drawList->AddRectFilled(scaledPos, 
+                ImVec2(scaledPos.x + scaledSize.x, scaledPos.y + scaledSize.y),
+                ImGui::ColorConvertFloat4ToU32(bgVec), Theme::CardRadius);
+            
+            // Radio button indicator with animation
+            float radioX = scaledPos.x + 20;
+            float radioY = scaledPos.y + scaledSize.y * 0.5f;
+            
             if (isSelected) {
-                drawList->AddCircleFilled(ImVec2(pos.x + 20, pos.y + 30), 8,
+                // Animated fill
+                float fillScale = 0.8f + 0.2f * deviceGlowAnim_[idx];
+                drawList->AddCircleFilled(ImVec2(radioX, radioY), 9 * fillScale,
                     IM_COL32(255, 255, 255, 255));
-                drawList->AddCircleFilled(ImVec2(pos.x + 20, pos.y + 30), 4,
+                drawList->AddCircleFilled(ImVec2(radioX, radioY), 4 * fillScale,
                     theme_->GetColor(ThemeColor::Primary));
             } else {
-                drawList->AddCircle(ImVec2(pos.x + 20, pos.y + 30), 8,
+                drawList->AddCircle(ImVec2(radioX, radioY), 8,
                     theme_->GetColor(ThemeColor::Border), 16, 2.0f);
             }
             
-            // Device name
-            ImGui::SetCursorScreenPos(ImVec2(pos.x + 40, pos.y + 12));
-            ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%s", device.name.c_str());
+            // Device name (slightly brighter on hover)
+            ImVec4 nameColor = theme_->GetColorVec(ThemeColor::TextPrimary);
+            if (deviceHoverAnim_[idx] > 0.01f) {
+                nameColor.x = std::min(1.0f, nameColor.x + 0.2f * deviceHoverAnim_[idx]);
+                nameColor.y = std::min(1.0f, nameColor.y + 0.2f * deviceHoverAnim_[idx]);
+                nameColor.z = std::min(1.0f, nameColor.z + 0.2f * deviceHoverAnim_[idx]);
+            }
+            ImGui::SetCursorScreenPos(ImVec2(scaledPos.x + 42, scaledPos.y + 14));
+            ImGui::TextColored(nameColor, "%s", device.name.c_str());
             
-            // IP
-            ImGui::SetCursorScreenPos(ImVec2(pos.x + 40, pos.y + 32));
+            // IP address
+            ImGui::SetCursorScreenPos(ImVec2(scaledPos.x + 42, scaledPos.y + 36));
             ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "%s", device.ip.c_str());
             
             // Clickable area
@@ -310,7 +423,8 @@ void SendView::RenderDeviceSelector() {
                 selectedDeviceId_ = device.id;
             }
             
-            ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + size.y + 10));
+            ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + size.y + 12));
+            idx++;
         }
     }
 }
@@ -357,6 +471,152 @@ void SendView::HandleFileDrop(HDROP hDrop) {
         char pathA[MAX_PATH];
         WideCharToMultiByte(CP_UTF8, 0, pathW, -1, pathA, MAX_PATH, nullptr, nullptr);
         selectedFiles_.push_back(pathA);
+    }
+}
+
+// ============ Celebration Effects ============
+
+void SendView::TriggerCelebration() {
+    celebrating_ = true;
+    celebrationTimer_ = 0.0f;
+    successGlow_ = 1.0f;
+    
+    // Play success sound
+    PlaySuccessSound();
+    
+    // Spawn confetti particles
+    particles_.clear();
+    std::uniform_real_distribution<float> xDist(0.0f, ImGui::GetIO().DisplaySize.x);
+    std::uniform_real_distribution<float> vxDist(-150.0f, 150.0f);
+    std::uniform_real_distribution<float> vyDist(-500.0f, -250.0f);
+    std::uniform_real_distribution<float> sizeDist(6.0f, 14.0f);
+    std::uniform_real_distribution<float> rotDist(0.0f, 6.28f);
+    std::uniform_int_distribution<int> colorDist(0, 5);
+    
+    for (int i = 0; i < 100; i++) {
+        SendParticle p;
+        p.x = xDist(rng_);
+        p.y = ImGui::GetIO().DisplaySize.y + 50.0f;
+        p.vx = vxDist(rng_);
+        p.vy = vyDist(rng_);
+        p.life = 1.0f;
+        p.size = sizeDist(rng_);
+        p.rotation = rotDist(rng_);
+        p.color = CONFETTI_COLORS[colorDist(rng_)];
+        particles_.push_back(p);
+    }
+}
+
+void SendView::UpdateParticles(float dt) {
+    for (auto& p : particles_) {
+        // Gravity
+        p.vy += 600.0f * dt;
+        
+        // Air resistance
+        p.vx *= 0.99f;
+        
+        // Movement
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        
+        // Spin
+        p.rotation += p.vx * 0.01f * dt;
+        
+        // Fade out based on position and time
+        if (p.y > ImGui::GetIO().DisplaySize.y * 0.7f) {
+            p.life -= dt * 0.8f;
+        }
+    }
+    
+    // Remove dead particles
+    particles_.erase(
+        std::remove_if(particles_.begin(), particles_.end(), 
+            [](const SendParticle& p) { return p.life <= 0; }),
+        particles_.end()
+    );
+}
+
+void SendView::RenderCelebration() {
+    if (!celebrating_ && particles_.empty()) return;
+    
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    
+    // Success glow overlay
+    if (successGlow_ > 0.01f) {
+        ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+        ImU32 glowColor = IM_COL32(
+            100, 255, 150, 
+            (int)(successGlow_ * 40)
+        );
+        drawList->AddRectFilled(ImVec2(0, 0), displaySize, glowColor);
+    }
+    
+    // Draw confetti particles
+    for (const auto& p : particles_) {
+        ImU32 color = (p.color & 0x00FFFFFF) | ((int)(p.life * 255) << 24);
+        
+        // Draw as rotated squares
+        float c = std::cos(p.rotation);
+        float s = std::sin(p.rotation);
+        float hs = p.size * 0.5f;
+        
+        ImVec2 corners[4] = {
+            ImVec2(p.x + (-hs * c - -hs * s), p.y + (-hs * s + -hs * c)),
+            ImVec2(p.x + (hs * c - -hs * s), p.y + (hs * s + -hs * c)),
+            ImVec2(p.x + (hs * c - hs * s), p.y + (hs * s + hs * c)),
+            ImVec2(p.x + (-hs * c - hs * s), p.y + (-hs * s + hs * c))
+        };
+        
+        drawList->AddQuadFilled(corners[0], corners[1], corners[2], corners[3], color);
+    }
+}
+
+void SendView::PlaySuccessSound() {
+    // Play Windows system sound for success (MessageBeep is in user32, always available)
+    MessageBeep(MB_OK);
+}
+
+void SendView::RenderProgressBar() {
+    auto transfers = bridge_->GetTransfers();
+    
+    for (const auto& t : transfers) {
+        if (!t.isSending || t.state != TELEPORT_STATE_TRANSFERRING) continue;
+        
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        float width = ImGui::GetContentRegionAvail().x;
+        float height = 8.0f;
+        
+        // Background track
+        drawList->AddRectFilled(
+            pos, ImVec2(pos.x + width, pos.y + height),
+            theme_->GetColor(ThemeColor::SurfaceLight), 4.0f
+        );
+        
+        // Progress fill with gradient
+        float progress = (float)t.bytesTransferred / std::max(t.bytesTotal, (uint64_t)1);
+        ImVec4 startColor = theme_->GetColorVec(ThemeColor::Primary);
+        ImVec4 endColor = theme_->GetColorVec(ThemeColor::Accent);
+        
+        drawList->AddRectFilledMultiColor(
+            pos, ImVec2(pos.x + width * progress, pos.y + height),
+            ImGui::ColorConvertFloat4ToU32(startColor),
+            ImGui::ColorConvertFloat4ToU32(endColor),
+            ImGui::ColorConvertFloat4ToU32(endColor),
+            ImGui::ColorConvertFloat4ToU32(startColor)
+        );
+        
+        // Glow effect
+        float glowIntensity = 0.3f + 0.2f * std::sin(ImGui::GetTime() * 4.0f);
+        ImU32 glowColor = IM_COL32(147, 112, 219, (int)(glowIntensity * 100));
+        drawList->AddRect(
+            ImVec2(pos.x - 2, pos.y - 2), 
+            ImVec2(pos.x + width * progress + 2, pos.y + height + 2),
+            glowColor, 6.0f, 0, 3.0f
+        );
+        
+        ImGui::Dummy(ImVec2(width, height + 8));
+        break;  // Only show first active transfer
     }
 }
 

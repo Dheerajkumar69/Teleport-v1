@@ -6,9 +6,11 @@
 #include "DiscoverView.h"
 #include "components/DeviceCard.h"
 #include "imgui.h"
+#include "../../../core/src/pairing/third_party/qrcodegen.hpp"
 #include <cmath>
 #include <algorithm>
 #include <string>
+#include <sstream>
 
 namespace teleport::ui {
 
@@ -171,6 +173,7 @@ void DiscoverView::Render() {
     // Render modals
     RenderQrModal();
     RenderHotspotModal();
+    RenderManualConnectModal();
     
     // Render celebration on top
     RenderCelebration();
@@ -515,13 +518,31 @@ void DiscoverView::RenderConnectionMethods() {
         ImGui::SetTooltip(hotspotActive_ ? "View hotspot details" : "No WiFi? Create a hotspot");
     }
     
+    ImGui::SameLine(0, 8);
+    
+    // Manual IP button - direct connection
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.22f, 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.32f, 0.9f));
+    if (ImGui::Button(" Manual IP ", ImVec2(100, 32))) {
+        showManualConnectModal_ = true;
+        modalFadeIn_ = 0.0f;
+    }
+    ImGui::PopStyleColor(2);
+    
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Connect by entering IP address");
+    }
+    
+    // Note: WiFi Direct requires separate DLL built with MSVC
+    // Button shown as disabled until wifi_direct.dll is present
+    
     ImGui::PopStyleVar();
 }
 
 void DiscoverView::RenderQrModal() {
     if (!showQrModal_) return;
     
-    ImGui::SetNextWindowSize(ImVec2(380, 420), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(420, 480), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.08f, 0.1f, 0.98f));
@@ -541,23 +562,68 @@ void DiscoverView::RenderQrModal() {
         ImGui::Spacing();
         ImGui::Spacing();
         
-        // QR Code centered
-        float qrSize = 220.0f;
-        ImVec2 qrPos = ImGui::GetCursorScreenPos();
-        qrPos.x += (ImGui::GetContentRegionAvail().x - qrSize) * 0.5f;
+        // Get QR pairing info from bridge
+        auto qrInfo = bridge_->GetQrPairingInfo();
         
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        // Generate QR code data string (JSON format)
+        std::ostringstream oss;
+        oss << "{\"ip\":\"" << qrInfo.ip 
+            << "\",\"port\":" << qrInfo.port
+            << ",\"token\":\"" << qrInfo.session_token
+            << "\",\"device\":\"" << qrInfo.device_name << "\"}";
+        std::string qrData = oss.str();
         
-        // White background for QR
-        drawList->AddRectFilled(qrPos, 
-            ImVec2(qrPos.x + qrSize, qrPos.y + qrSize),
-            IM_COL32(255, 255, 255, 255), 8.0f);
-        
-        // Placeholder text
-        drawList->AddText(ImVec2(qrPos.x + qrSize * 0.35f, qrPos.y + qrSize * 0.45f),
-            IM_COL32(0, 0, 0, 255), "QR Code");
-        
-        ImGui::Dummy(ImVec2(qrSize, qrSize + 10));
+        // Generate QR code
+        try {
+            qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(qrData.c_str(), qrcodegen::QrCode::Ecc::MEDIUM);
+            int qrSize = qr.getSize();
+            
+            // Calculate rendering dimensions
+            float displaySize = 260.0f;
+            float cellSize = displaySize / (qrSize + 8);  // Add quiet zone
+            float totalSize = cellSize * (qrSize + 8);
+            
+            ImVec2 qrPos = ImGui::GetCursorScreenPos();
+            qrPos.x += (ImGui::GetContentRegionAvail().x - totalSize) * 0.5f;
+            
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            
+            // White background with rounded corners
+            drawList->AddRectFilled(qrPos, 
+                ImVec2(qrPos.x + totalSize, qrPos.y + totalSize),
+                IM_COL32(255, 255, 255, 255), 8.0f);
+            
+            // Draw QR modules
+            float offset = cellSize * 4;  // Quiet zone offset
+            for (int y = 0; y < qrSize; y++) {
+                for (int x = 0; x < qrSize; x++) {
+                    if (qr.getModule(x, y)) {
+                        ImVec2 cellPos(qrPos.x + offset + x * cellSize, qrPos.y + offset + y * cellSize);
+                        drawList->AddRectFilled(cellPos,
+                            ImVec2(cellPos.x + cellSize, cellPos.y + cellSize),
+                            IM_COL32(0, 0, 0, 255));
+                    }
+                }
+            }
+            
+            ImGui::Dummy(ImVec2(totalSize, totalSize + 10));
+            
+        } catch (...) {
+            // Fallback: show error message
+            float qrSize = 220.0f;
+            ImVec2 qrPos = ImGui::GetCursorScreenPos();
+            qrPos.x += (ImGui::GetContentRegionAvail().x - qrSize) * 0.5f;
+            
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(qrPos, 
+                ImVec2(qrPos.x + qrSize, qrPos.y + qrSize),
+                IM_COL32(50, 50, 60, 255), 8.0f);
+            
+            drawList->AddText(ImVec2(qrPos.x + 30, qrPos.y + qrSize * 0.45f),
+                IM_COL32(200, 100, 100, 255), "Click 'Generate' to create QR");
+            
+            ImGui::Dummy(ImVec2(qrSize, qrSize + 10));
+        }
         
         ImGui::Spacing();
         
@@ -570,11 +636,11 @@ void DiscoverView::RenderQrModal() {
         ImGui::Spacing();
         ImGui::Spacing();
         
-        // New code button
-        float buttonWidth = 120.0f;
+        // Generate button
+        float buttonWidth = 140.0f;
         ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
         ImGui::PushStyleColor(ImGuiCol_Button, theme_->GetColorVec(ThemeColor::Primary));
-        if (ImGui::Button("New Code", ImVec2(buttonWidth, 36))) {
+        if (ImGui::Button("Generate QR", ImVec2(buttonWidth, 40))) {
             qrExpirySeconds_ = 300;
             bridge_->GenerateQrPairing(qrExpirySeconds_);
             qrImageData_ = bridge_->GetQrImageData();
@@ -689,6 +755,101 @@ void DiscoverView::RenderHotspotModal() {
     
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor();
+}
+
+void DiscoverView::RenderManualConnectModal() {
+    if (!showManualConnectModal_) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(420, 320), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    
+    // Match QR modal styling - bright purple-ish background
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.11f, 0.18f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.486f, 0.228f, 0.929f, 0.9f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.586f, 0.328f, 1.0f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(25, 20));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+    
+    if (ImGui::Begin("Manual Connect", &showManualConnectModal_, 
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
+        
+        // Description
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.75f, 1.0f), 
+            "Connect directly by entering the IP address");
+        
+        ImGui::Spacing();
+        ImGui::Spacing();
+        
+        // IP input - with label
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "IP Address");
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.18f, 0.28f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.25f, 0.22f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.3f, 0.25f, 0.4f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##ManualIP", "192.168.1.100", manualIp_, sizeof(manualIp_));
+        ImGui::PopStyleColor(4);
+        
+        ImGui::Spacing();
+        
+        // Port input
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "Port");
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.18f, 0.28f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.25f, 0.22f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.3f, 0.25f, 0.4f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::SetNextItemWidth(120);
+        ImGui::InputText("##ManualPort", manualPort_, sizeof(manualPort_));
+        ImGui::PopStyleColor(4);
+        
+        ImGui::Spacing();
+        
+        // Device name input
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "Device Name (optional)");
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.18f, 0.28f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.25f, 0.22f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.3f, 0.25f, 0.4f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##ManualName", "Remote Device", manualName_, sizeof(manualName_));
+        ImGui::PopStyleColor(4);
+        
+        ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Spacing();
+        
+        // Buttons - centered
+        float buttonWidth = 120.0f;
+        float totalWidth = buttonWidth * 2 + 20;
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - totalWidth) / 2);
+        
+        // Cancel button
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.28f, 0.38f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.35f, 0.5f, 1.0f));
+        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 40))) {
+            showManualConnectModal_ = false;
+        }
+        ImGui::PopStyleColor(2);
+        
+        ImGui::SameLine(0, 20);
+        
+        // Connect button - bright purple
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.486f, 0.228f, 0.929f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.586f, 0.328f, 1.0f, 1.0f));
+        if (ImGui::Button("Connect", ImVec2(buttonWidth, 40))) {
+            if (strlen(manualIp_) > 0) {
+                bridge_->AddManualDevice(manualIp_, (uint16_t)atoi(manualPort_), 
+                    strlen(manualName_) > 0 ? manualName_ : "Remote Device");
+                showManualConnectModal_ = false;
+            }
+        }
+        ImGui::PopStyleColor(2);
+    }
+    ImGui::End();
+    
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(3);
 }
 
 } // namespace teleport::ui

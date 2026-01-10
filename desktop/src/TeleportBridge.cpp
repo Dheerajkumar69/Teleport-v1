@@ -152,6 +152,32 @@ std::vector<DeviceInfo> TeleportBridge::GetDevices() const {
     return devices_;
 }
 
+void TeleportBridge::AddManualDevice(const char* ip, uint16_t port, const char* name) {
+    if (!ip || !name) return;
+    
+    DeviceInfo info;
+    info.id = std::string("manual_") + ip + "_" + std::to_string(port);
+    info.name = name;
+    info.os = "Manual";
+    info.ip = ip;
+    info.port = port;
+    info.lastSeen = GetTickCount64();
+    info.isNew = true;
+    info.fadeIn = 0.0f;
+    
+    std::lock_guard<std::mutex> lock(devicesMutex_);
+    
+    // Check if already exists
+    for (auto& existing : devices_) {
+        if (existing.ip == ip && existing.port == port) {
+            existing.lastSeen = GetTickCount64();
+            return;
+        }
+    }
+    
+    devices_.push_back(info);
+}
+
 bool TeleportBridge::SendFiles(const std::string& deviceId, 
                                const std::vector<std::string>& filePaths) {
     if (!engine_ || filePaths.empty()) {
