@@ -3,11 +3,6 @@ add_library(teleport_core STATIC
     # Public API
     src/teleport.cpp
     
-    # Platform abstraction
-    src/platform/pal.cpp
-    src/platform/hotspot_win.cpp
-    src/platform/wifi_direct_win.cpp
-    
     # Discovery
     src/discovery/discovery.cpp
     src/discovery/udp_broadcaster.cpp
@@ -36,6 +31,21 @@ add_library(teleport_core STATIC
     src/utils/logger.cpp
     src/utils/sanitize.cpp
 )
+
+# Platform-specific source files
+if(WIN32)
+    target_sources(teleport_core PRIVATE
+        src/platform/pal.cpp
+        src/platform/hotspot_win.cpp
+        src/platform/wifi_direct_win.cpp
+    )
+elseif(UNIX AND NOT APPLE)
+    target_sources(teleport_core PRIVATE
+        src/platform/pal_linux.cpp
+        src/platform/hotspot_linux.cpp
+        src/platform/wifi_direct_linux.cpp
+    )
+endif()
 
 target_include_directories(teleport_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

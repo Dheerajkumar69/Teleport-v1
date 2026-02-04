@@ -57,9 +57,11 @@ option(TELEPORT_BUILD_DESKTOP "Build desktop UI application" ON)
 add_subdirectory(core)
 add_subdirectory(cli)
 
-# Desktop UI (Windows only)
-if(WIN32 AND TELEPORT_BUILD_DESKTOP)
-    add_subdirectory(desktop)
+# Desktop UI (Windows and Linux)
+if(TELEPORT_BUILD_DESKTOP)
+    if(WIN32 OR (UNIX AND NOT APPLE))
+        add_subdirectory(desktop)
+    endif()
 endif()
 
 # Install targets

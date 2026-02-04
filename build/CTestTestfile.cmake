@@ -1,6 +1,6 @@
 # CMake generated Testfile for 
-# Source directory: D:/CODES/actual projects/Teleport
-# Build directory: D:/CODES/actual projects/Teleport/build
+# Source directory: /home/dheeraj/Code/actual project /teleport/Teleport-v1
+# Build directory: /home/dheeraj/Code/actual project /teleport/Teleport-v1/build
 # 
 # This file includes the relevant testing commands required for 
 # testing this directory and lists subdirectories to be tested as well.

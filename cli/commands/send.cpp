@@ -15,6 +15,7 @@
 #include <csignal>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 namespace teleport {
 namespace cli {

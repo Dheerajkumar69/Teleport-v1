@@ -1,28 +1,24 @@
-# Teleport Desktop UI - Modern Windows GUI using Dear ImGui
+# Teleport Desktop UI - Cross-Platform GUI using Dear ImGui
 cmake_minimum_required(VERSION 3.20)
 project(TeleportDesktop VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Use local ImGui copy (faster than FetchContent)
+# Use local ImGui copy
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 
-# ImGui source files
-set(IMGUI_SOURCES
+# ImGui core source files (always needed)
+set(IMGUI_CORE_SOURCES
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
 )
 
-# Desktop application sources
-set(DESKTOP_SOURCES
-    src/main.cpp
-    src/Application.cpp
+# Common desktop application sources (shared between Windows and Linux)
+set(DESKTOP_COMMON_SOURCES
     src/TeleportBridge.cpp
     src/Theme.cpp
     src/views/DiscoverView.cpp
@@ -36,8 +32,7 @@ set(DESKTOP_SOURCES
     src/components/Animations.cpp
 )
 
-set(DESKTOP_HEADERS
-    src/Application.h
+set(DESKTOP_COMMON_HEADERS
     src/TeleportBridge.h
     src/Theme.h
     src/views/DiscoverView.h
@@ -51,52 +46,142 @@ set(DESKTOP_HEADERS
     src/components/Animations.h
 )
 
-# Create executable
-add_executable(TeleportUI WIN32
-    ${DESKTOP_SOURCES}
-    ${DESKTOP_HEADERS}
-    ${IMGUI_SOURCES}
-    resources/app.rc
-)
-
-target_include_directories(TeleportUI PRIVATE
-    ${IMGUI_DIR}
-    ${IMGUI_DIR}/backends
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/core/include
-)
-
-# Link libraries
-target_link_libraries(TeleportUI PRIVATE
-    teleport_core
-    d3d11
-    dxgi
-    d3dcompiler
-    dwmapi
-    uxtheme
-    Comctl32
-    Shlwapi
-)
-
-# Windows-specific settings
-target_compile_definitions(TeleportUI PRIVATE
-    UNICODE
-    _UNICODE
-    WIN32_LEAN_AND_MEAN
-    NOMINMAX
-)
-
-# Enable high DPI awareness
-set_target_properties(TeleportUI PROPERTIES
-    VS_DPI_AWARE "PerMonitor"
-    OUTPUT_NAME "Teleport"
-)
-
-# Copy fonts to build output (if fonts exist)
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts)
-    add_custom_command(TARGET TeleportUI POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts
-        $<TARGET_FILE_DIR:TeleportUI>/fonts
+# ============================================================================
+# WINDOWS BUILD (DirectX 11 + Win32)
+# ============================================================================
+if(WIN32)
+    set(IMGUI_WIN32_SOURCES
+        ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
     )
+
+    set(DESKTOP_WIN_SOURCES
+        src/main.cpp
+        src/Application.cpp
+    )
+
+    set(DESKTOP_WIN_HEADERS
+        src/Application.h
+    )
+
+    add_executable(TeleportUI WIN32
+        ${DESKTOP_WIN_SOURCES}
+        ${DESKTOP_WIN_HEADERS}
+        ${DESKTOP_COMMON_SOURCES}
+        ${DESKTOP_COMMON_HEADERS}
+        ${IMGUI_CORE_SOURCES}
+        ${IMGUI_WIN32_SOURCES}
+        resources/app.rc
+    )
+
+    target_include_directories(TeleportUI PRIVATE
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/core/include
+    )
+
+    target_link_libraries(TeleportUI PRIVATE
+        teleport_core
+        d3d11
+        dxgi
+        d3dcompiler
+        dwmapi
+        uxtheme
+        Comctl32
+        Shlwapi
+    )
+
+    target_compile_definitions(TeleportUI PRIVATE
+        UNICODE
+        _UNICODE
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+    )
+
+    set_target_properties(TeleportUI PROPERTIES
+        VS_DPI_AWARE "PerMonitor"
+        OUTPUT_NAME "Teleport"
+    )
+
+    # Copy fonts to build output
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts)
+        add_custom_command(TARGET TeleportUI POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts
+            $<TARGET_FILE_DIR:TeleportUI>/fonts
+        )
+    endif()
+
+# ============================================================================
+# LINUX BUILD (SDL2 + OpenGL3)
+# ============================================================================
+elseif(UNIX AND NOT APPLE)
+    # Find required packages
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2 REQUIRED sdl2)
+    find_package(OpenGL REQUIRED)
+
+    set(IMGUI_SDL_GL_SOURCES
+        ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+
+    set(DESKTOP_LINUX_SOURCES
+        src/main_linux.cpp
+        src/Application_sdl.cpp
+        src/platform/FileDialog_linux.cpp
+    )
+
+    set(DESKTOP_LINUX_HEADERS
+        src/Application_sdl.h
+        src/platform/FileDialog_linux.h
+    )
+
+    add_executable(TeleportUI
+        ${DESKTOP_LINUX_SOURCES}
+        ${DESKTOP_LINUX_HEADERS}
+        ${DESKTOP_COMMON_SOURCES}
+        ${DESKTOP_COMMON_HEADERS}
+        ${IMGUI_CORE_SOURCES}
+        ${IMGUI_SDL_GL_SOURCES}
+    )
+
+    target_include_directories(TeleportUI PRIVATE
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${SDL2_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(TeleportUI PRIVATE
+        teleport_core
+        ${SDL2_LIBRARIES}
+        OpenGL::GL
+        ${CMAKE_DL_LIBS}
+    )
+
+    target_compile_definitions(TeleportUI PRIVATE
+        TELEPORT_LINUX
+    )
+
+    set_target_properties(TeleportUI PROPERTIES
+        OUTPUT_NAME "Teleport"
+    )
+
+    # Copy fonts to build output
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts)
+        add_custom_command(TARGET TeleportUI POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts
+            $<TARGET_FILE_DIR:TeleportUI>/fonts
+        )
+    endif()
+
+# ============================================================================
+# macOS BUILD (placeholder for future)
+# ============================================================================
+elseif(APPLE)
+    message(STATUS "macOS desktop build not yet implemented")
 endif()

@@ -1,38 +1,38 @@
-D:/CODES/actual projects/Teleport/build/CMakeFiles/test.dir
-D:/CODES/actual projects/Teleport/build/CMakeFiles/edit_cache.dir
-D:/CODES/actual projects/Teleport/build/CMakeFiles/rebuild_cache.dir
-D:/CODES/actual projects/Teleport/build/CMakeFiles/list_install_components.dir
-D:/CODES/actual projects/Teleport/build/CMakeFiles/install.dir
-D:/CODES/actual projects/Teleport/build/CMakeFiles/install/local.dir
-D:/CODES/actual projects/Teleport/build/CMakeFiles/install/strip.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/test.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/edit_cache.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/rebuild_cache.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/list_install_components.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/install.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/install/local.dir
-D:/CODES/actual projects/Teleport/build/_deps/json-build/CMakeFiles/install/strip.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/teleport_core.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/test.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/edit_cache.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/rebuild_cache.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/list_install_components.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/install.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/install/local.dir
-D:/CODES/actual projects/Teleport/build/core/CMakeFiles/install/strip.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/teleport_cli.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/test.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/edit_cache.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/rebuild_cache.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/list_install_components.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/install.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/install/local.dir
-D:/CODES/actual projects/Teleport/build/cli/CMakeFiles/install/strip.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/TeleportUI.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/test.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/edit_cache.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/rebuild_cache.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/list_install_components.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/install.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/install/local.dir
-D:/CODES/actual projects/Teleport/build/desktop/CMakeFiles/install/strip.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/test.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/edit_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/rebuild_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/list_install_components.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/install.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/install/local.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/CMakeFiles/install/strip.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/test.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/edit_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/rebuild_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/list_install_components.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/install.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/install/local.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/install/strip.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/teleport_core.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/test.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/edit_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/rebuild_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/list_install_components.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/install.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/install/local.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/install/strip.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/teleport_cli.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/test.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/edit_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/rebuild_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/list_install_components.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/install.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/install/local.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/cli/CMakeFiles/install/strip.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/TeleportUI.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/test.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/edit_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/rebuild_cache.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/list_install_components.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/install.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/install/local.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/desktop/CMakeFiles/install/strip.dir
