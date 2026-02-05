@@ -132,7 +132,7 @@
 
             // Navigate to the web app after a brief moment
             setTimeout(() => {
-                window.location.href = '../webversion/index.html';
+                window.location.href = 'https://webversionteleport.vercel.app';
             }, 500);
         });
     }
