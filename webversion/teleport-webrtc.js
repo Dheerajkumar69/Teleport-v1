@@ -576,8 +576,22 @@ class TeleportWebRTC {
     setupDataChannel(dc, peerId) {
         dc.binaryType = 'arraybuffer';
         this.dataChannels.set(peerId, dc);
+
+        dc.onopen = () => {
+            console.log(`[DataChannel] Opened with peer ${peerId}`);
+        };
+
         dc.onmessage = (event) => this.handleDataChannelMessage(peerId, event.data);
-        dc.onclose = () => this.dataChannels.delete(peerId);
+
+        dc.onerror = (error) => {
+            console.error(`[DataChannel] Error with peer ${peerId}:`, error);
+            this.handleError('DataChannel error', error);
+        };
+
+        dc.onclose = () => {
+            console.log(`[DataChannel] Closed with peer ${peerId}`);
+            this.dataChannels.delete(peerId);
+        };
     }
 
     // ==================== DATA CHANNEL ====================
@@ -869,13 +883,21 @@ class TeleportWebRTC {
         });
     }
 
-    waitForDataChannel(peerId, timeout = 10000) {
+    waitForDataChannel(peerId, timeout = 30000) {
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
             const check = () => {
                 const dc = this.dataChannels.get(peerId);
-                if (dc?.readyState === 'open') { resolve(); return; }
-                if (Date.now() - startTime > timeout) { reject(new Error('DataChannel timeout')); return; }
+                if (dc?.readyState === 'open') {
+                    console.log(`[DataChannel] Ready with peer ${peerId}`);
+                    resolve();
+                    return;
+                }
+                if (Date.now() - startTime > timeout) {
+                    console.error(`[DataChannel] Timeout waiting for peer ${peerId}`);
+                    reject(new Error('DataChannel timeout - peer may be behind NAT or firewall'));
+                    return;
+                }
                 setTimeout(check, 100);
             };
             check();
