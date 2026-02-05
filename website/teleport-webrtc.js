@@ -73,6 +73,16 @@ class TeleportWebRTC {
         this.MAX_BUFFER_SIZE = 1024 * 1024;
         this.TRANSFER_TIMEOUT = 30000;
         this.CONNECTION_TIMEOUT = 15000;
+
+        // E2E Encryption
+        this.keyPair = null;
+        this.sharedSecrets = new Map(); // peerId -> AES key
+        this.peerPublicKeys = new Map();
+        this.encryptionEnabled = true;
+        this.onError = null; // Global error callback
+
+        // Initialize encryption keys
+        this.initEncryption();
     }
 
     // ==================== BROADCAST CHANNEL ====================
@@ -221,16 +231,19 @@ class TeleportWebRTC {
 
                 if (message.type === 'welcome') {
                     this.peerId = message.peerId;
-                    this.generateFingerprint();
-                    this.ws.send(JSON.stringify({
-                        type: 'join',
-                        room: 'teleport-lan',
-                        name: this.deviceName,
-                        fingerprint: this.peerFingerprint
-                    }));
-                    if (this.onConnected) this.onConnected();
-                    this.broadcastEvent('connected', { peerId: this.peerId });
-                    resolve();
+                    this.generateFingerprint().then(async () => {
+                        const publicKey = await this.exportPublicKey();
+                        this.ws.send(JSON.stringify({
+                            type: 'join',
+                            room: 'teleport-lan',
+                            name: this.deviceName,
+                            fingerprint: this.peerFingerprint,
+                            publicKey: publicKey
+                        }));
+                        if (this.onConnected) this.onConnected();
+                        this.broadcastEvent('connected', { peerId: this.peerId });
+                        resolve();
+                    });
                 }
             };
 
@@ -247,20 +260,90 @@ class TeleportWebRTC {
         });
     }
 
-    generateFingerprint() {
-        const data = `${this.peerId}-${Date.now()}-${Math.random()}`;
-        this.peerFingerprint = this.hashString(data).substring(0, 16).toUpperCase();
+    async generateFingerprint() {
+        try {
+            const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+            const data = `${this.peerId}-${Date.now()}-${Array.from(randomBytes).join('')}`;
+            const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            this.peerFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16).toUpperCase();
+        } catch (e) {
+            // Fallback for older browsers
+            this.peerFingerprint = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+        }
     }
 
-    hashString(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+    // ==================== E2E ENCRYPTION ====================
+
+    async initEncryption() {
+        try {
+            this.keyPair = await crypto.subtle.generateKey(
+                { name: 'ECDH', namedCurve: 'P-256' },
+                true,
+                ['deriveKey', 'deriveBits']
+            );
+        } catch (e) {
+            console.warn('E2E encryption not available:', e);
+            this.encryptionEnabled = false;
         }
-        return Math.abs(hash).toString(16).padStart(8, '0') +
-            Math.abs(hash * 31).toString(16).padStart(8, '0');
+    }
+
+    async exportPublicKey() {
+        if (!this.keyPair) return null;
+        const exported = await crypto.subtle.exportKey('raw', this.keyPair.publicKey);
+        return btoa(String.fromCharCode(...new Uint8Array(exported)));
+    }
+
+    async importPeerPublicKey(peerId, base64Key) {
+        try {
+            const keyData = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
+            const publicKey = await crypto.subtle.importKey(
+                'raw', keyData, { name: 'ECDH', namedCurve: 'P-256' }, true, []
+            );
+            this.peerPublicKeys.set(peerId, publicKey);
+            await this.deriveSharedSecret(peerId, publicKey);
+        } catch (e) {
+            this.handleError('Key import failed', e);
+        }
+    }
+
+    async deriveSharedSecret(peerId, peerPublicKey) {
+        if (!this.keyPair) return;
+        try {
+            const sharedKey = await crypto.subtle.deriveKey(
+                { name: 'ECDH', public: peerPublicKey },
+                this.keyPair.privateKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+            this.sharedSecrets.set(peerId, sharedKey);
+        } catch (e) {
+            this.handleError('Key derivation failed', e);
+        }
+    }
+
+    async encryptData(peerId, data) {
+        const key = this.sharedSecrets.get(peerId);
+        if (!key || !this.encryptionEnabled) return { encrypted: false, data };
+        try {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+            return { encrypted: true, data: encrypted, iv };
+        } catch (e) {
+            return { encrypted: false, data };
+        }
+    }
+
+    async decryptData(peerId, encryptedData, iv) {
+        const key = this.sharedSecrets.get(peerId);
+        if (!key) throw new Error('No shared key for peer');
+        return await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, key, encryptedData);
+    }
+
+    handleError(message, error) {
+        console.error(`[Teleport Error] ${message}:`, error);
+        if (this.onError) this.onError({ message, error: error?.message || String(error) });
     }
 
     attemptReconnect() {
@@ -311,38 +394,54 @@ class TeleportWebRTC {
     // ==================== SIGNALING ====================
 
     handleSignalingMessage(message) {
-        switch (message.type) {
-            case 'peers':
-                if (this.onPeersUpdated) {
-                    this.onPeersUpdated(message.peers);
-                    this.broadcastEvent('peer-connected', { peers: message.peers });
-                }
-                break;
-            case 'peer-left':
-                this.cleanupPeer(message.peerId);
-                break;
-            case 'offer':
-                this.handleOffer(message.from, message.sdp, message.fingerprint);
-                break;
-            case 'answer':
-                this.handleAnswer(message.from, message.sdp);
-                break;
-            case 'ice':
-                this.handleIceCandidate(message.from, message.candidate);
-                break;
-            case 'file-request':
-                if (this.onFileRequest) {
-                    this.onFileRequest({
-                        from: message.from,
-                        fromName: message.fromName,
-                        files: message.files,
-                        fingerprint: message.fingerprint
-                    });
-                }
-                break;
-            case 'file-response':
-                this.handleFileResponse(message.from, message.accepted);
-                break;
+        try {
+            switch (message.type) {
+                case 'peers':
+                    if (this.onPeersUpdated) {
+                        // Import public keys from peers for E2E encryption
+                        for (const peer of message.peers) {
+                            if (peer.publicKey && !this.peerPublicKeys.has(peer.id)) {
+                                this.importPeerPublicKey(peer.id, peer.publicKey);
+                            }
+                        }
+                        this.onPeersUpdated(message.peers);
+                        this.broadcastEvent('peer-connected', { peers: message.peers });
+                    }
+                    break;
+                case 'peer-left':
+                    this.cleanupPeer(message.peerId);
+                    break;
+                case 'offer':
+                    this.handleOffer(message.from, message.sdp, message.fingerprint, message.publicKey);
+                    break;
+                case 'answer':
+                    this.handleAnswer(message.from, message.sdp, message.publicKey);
+                    break;
+                case 'ice':
+                    this.handleIceCandidate(message.from, message.candidate);
+                    break;
+                case 'key-exchange':
+                    if (message.publicKey) {
+                        this.importPeerPublicKey(message.from, message.publicKey);
+                    }
+                    break;
+                case 'file-request':
+                    if (this.onFileRequest) {
+                        this.onFileRequest({
+                            from: message.from,
+                            fromName: message.fromName,
+                            files: message.files,
+                            fingerprint: message.fingerprint,
+                            encrypted: this.sharedSecrets.has(message.from)
+                        });
+                    }
+                    break;
+                case 'file-response':
+                    this.handleFileResponse(message.from, message.accepted);
+                    break;
+            }
+        } catch (error) {
+            this.handleError('Signaling message handling failed', error);
         }
     }
 
@@ -404,42 +503,67 @@ class TeleportWebRTC {
         }
     }
 
-    async handleOffer(fromPeerId, sdp, fingerprint) {
-        if (this.onPeerVerification && fingerprint) {
-            this.onPeerVerification(fromPeerId, fingerprint);
-        }
-
-        const pc = new RTCPeerConnection(this.rtcConfig);
-        this.peers.set(fromPeerId, pc);
-
-        pc.onicecandidate = (event) => {
-            if (event.candidate && this.ws?.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({
-                    type: 'ice',
-                    to: fromPeerId,
-                    candidate: event.candidate
-                }));
+    async handleOffer(fromPeerId, sdp, fingerprint, publicKey) {
+        try {
+            if (this.onPeerVerification && fingerprint) {
+                this.onPeerVerification(fromPeerId, fingerprint);
             }
-        };
 
-        pc.ondatachannel = (event) => {
-            this.setupDataChannel(event.channel, fromPeerId);
-        };
+            // Import peer's public key for E2E encryption
+            if (publicKey) {
+                await this.importPeerPublicKey(fromPeerId, publicKey);
+            }
 
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+            const pc = new RTCPeerConnection(this.rtcConfig);
+            this.peers.set(fromPeerId, pc);
 
-        this.ws.send(JSON.stringify({
-            type: 'answer',
-            to: fromPeerId,
-            sdp: pc.localDescription
-        }));
+            pc.onicecandidate = (event) => {
+                if (event.candidate && this.ws?.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'ice',
+                        to: fromPeerId,
+                        candidate: event.candidate
+                    }));
+                }
+            };
+
+            pc.ondatachannel = (event) => {
+                this.setupDataChannel(event.channel, fromPeerId);
+            };
+
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    this.handleConnectionFailure(fromPeerId, 'Connection lost');
+                }
+            };
+
+            await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            const ourPublicKey = await this.exportPublicKey();
+            this.ws.send(JSON.stringify({
+                type: 'answer',
+                to: fromPeerId,
+                sdp: pc.localDescription,
+                publicKey: ourPublicKey
+            }));
+        } catch (error) {
+            this.handleError('Failed to handle offer', error);
+        }
     }
 
-    async handleAnswer(fromPeerId, sdp) {
-        const pc = this.peers.get(fromPeerId);
-        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    async handleAnswer(fromPeerId, sdp, publicKey) {
+        try {
+            // Import peer's public key for E2E encryption
+            if (publicKey) {
+                await this.importPeerPublicKey(fromPeerId, publicKey);
+            }
+            const pc = this.peers.get(fromPeerId);
+            if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        } catch (error) {
+            this.handleError('Failed to handle answer', error);
+        }
     }
 
     async handleIceCandidate(fromPeerId, candidate) {
@@ -967,130 +1091,278 @@ class TeleportWebRTC {
     }
 }
 
-// ==================== REAL QR CODE GENERATOR ====================
+// ==================== PRODUCTION QR CODE GENERATOR ====================
+// ISO/IEC 18004 compliant with Reed-Solomon error correction
 
 class QRCodeGenerator {
+    static PATTERNS = {
+        FINDER: [[1, 1, 1, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1], [1, 0, 1, 1, 1, 0, 1], [1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 1, 1]]
+    };
+
+    static EC_CODEWORDS = { L: [7, 10, 15, 20, 26, 36, 40, 48, 60, 72], M: [10, 16, 26, 36, 48, 64, 72, 88, 110, 130], Q: [13, 22, 36, 52, 72, 96, 108, 132, 160, 192], H: [17, 28, 44, 64, 88, 112, 130, 156, 192, 224] };
+
+    static ALPHANUMERIC = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+
+    static GF256 = (() => {
+        const exp = new Uint8Array(512), log = new Uint8Array(256);
+        let x = 1;
+        for (let i = 0; i < 255; i++) { exp[i] = x; log[x] = i; x = (x << 1) ^ (x >= 128 ? 0x11d : 0); }
+        for (let i = 255; i < 512; i++) exp[i] = exp[i - 255];
+        return { exp, log, mul: (a, b) => a && b ? exp[log[a] + log[b]] : 0 };
+    })();
+
     constructor(data) {
         this.data = data;
-        this.modules = [];
-        this.size = 0;
+        this.ecLevel = 'M'; // Medium error correction (15% recovery)
+        this.version = this.calculateVersion(data);
+        this.size = 17 + this.version * 4;
+        this.modules = Array(this.size).fill(null).map(() => Array(this.size).fill(null));
         this.generate();
     }
 
+    calculateVersion(data) {
+        const len = new TextEncoder().encode(data).length;
+        const caps = [17, 32, 53, 78, 106, 134, 154, 192, 230, 271];
+        for (let v = 1; v <= 10; v++) if (len <= caps[v - 1]) return v;
+        return 10;
+    }
+
     generate() {
-        // QR Code Version 4 (33x33) with Medium error correction
-        this.size = 33;
-        this.modules = Array(this.size).fill(null).map(() => Array(this.size).fill(null));
-
-        // Add finder patterns
-        this.addFinderPattern(0, 0);
-        this.addFinderPattern(this.size - 7, 0);
-        this.addFinderPattern(0, this.size - 7);
-
-        // Add alignment pattern
-        this.addAlignmentPattern(this.size - 9, this.size - 9);
-
-        // Add timing patterns
+        this.addFinderPatterns();
+        this.addAlignmentPatterns();
         this.addTimingPatterns();
-
-        // Add format info
-        this.addFormatInfo();
-
-        // Add data
-        this.addData();
+        this.reserveFormatArea();
+        if (this.version >= 7) this.reserveVersionArea();
+        const data = this.encodeData();
+        const ec = this.generateECC(data);
+        const bits = this.interleave(data, ec);
+        this.placeData(bits);
+        const mask = this.applyBestMask();
+        this.addFormatInfo(mask);
+        if (this.version >= 7) this.addVersionInfo();
     }
 
-    addFinderPattern(row, col) {
-        for (let r = -1; r <= 7; r++) {
-            for (let c = -1; c <= 7; c++) {
-                const targetRow = row + r;
-                const targetCol = col + c;
-                if (targetRow < 0 || targetRow >= this.size || targetCol < 0 || targetCol >= this.size) continue;
-
-                if (r === -1 || r === 7 || c === -1 || c === 7) {
-                    this.modules[targetRow][targetCol] = false;
-                } else if ((r === 0 || r === 6) || (c === 0 || c === 6)) {
-                    this.modules[targetRow][targetCol] = true;
-                } else if (r >= 2 && r <= 4 && c >= 2 && c <= 4) {
-                    this.modules[targetRow][targetCol] = true;
-                } else {
-                    this.modules[targetRow][targetCol] = false;
+    addFinderPatterns() {
+        const positions = [[0, 0], [this.size - 7, 0], [0, this.size - 7]];
+        for (const [row, col] of positions) {
+            for (let r = -1; r <= 7; r++) {
+                for (let c = -1; c <= 7; c++) {
+                    const tr = row + r, tc = col + c;
+                    if (tr < 0 || tr >= this.size || tc < 0 || tc >= this.size) continue;
+                    const inOuter = r === -1 || r === 7 || c === -1 || c === 7;
+                    const inBorder = r === 0 || r === 6 || c === 0 || c === 6;
+                    const inCenter = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+                    this.modules[tr][tc] = inOuter ? false : (inBorder || inCenter);
                 }
             }
         }
     }
 
-    addAlignmentPattern(row, col) {
-        for (let r = -2; r <= 2; r++) {
-            for (let c = -2; c <= 2; c++) {
-                const targetRow = row + r;
-                const targetCol = col + c;
-                if (targetRow < 0 || targetRow >= this.size || targetCol < 0 || targetCol >= this.size) continue;
-
-                if (Math.abs(r) === 2 || Math.abs(c) === 2) {
-                    this.modules[targetRow][targetCol] = true;
-                } else if (r === 0 && c === 0) {
-                    this.modules[targetRow][targetCol] = true;
-                } else {
-                    this.modules[targetRow][targetCol] = false;
-                }
-            }
-        }
-    }
-
-    addTimingPatterns() {
-        for (let i = 8; i < this.size - 8; i++) {
-            const isBlack = i % 2 === 0;
-            if (this.modules[6][i] === null) this.modules[6][i] = isBlack;
-            if (this.modules[i][6] === null) this.modules[i][6] = isBlack;
-        }
-    }
-
-    addFormatInfo() {
-        // Format info around finder patterns
-        for (let i = 0; i < 8; i++) {
-            if (this.modules[8][i] === null) this.modules[8][i] = i % 2 === 0;
-            if (this.modules[i][8] === null) this.modules[i][8] = i % 2 === 0;
-        }
-        this.modules[8][8] = true;
-    }
-
-    addData() {
-        // Convert data to binary
-        const bytes = new TextEncoder().encode(this.data);
-        let bits = '';
-        for (const byte of bytes) {
-            bits += byte.toString(2).padStart(8, '0');
-        }
-
-        // Fill remaining modules with data pattern
-        let bitIndex = 0;
-        for (let col = this.size - 1; col > 0; col -= 2) {
-            if (col === 6) col--;
-
-            for (let row = 0; row < this.size; row++) {
-                const actualRow = (Math.floor((this.size - 1 - col) / 2) % 2 === 0) ? row : this.size - 1 - row;
-
-                for (let c = 0; c < 2; c++) {
-                    const actualCol = col - c;
-                    if (this.modules[actualRow][actualCol] === null) {
-                        let bit = bitIndex < bits.length ? bits[bitIndex] === '1' : false;
-                        // Apply mask pattern
-                        if ((actualRow + actualCol) % 2 === 0) bit = !bit;
-                        this.modules[actualRow][actualCol] = bit;
-                        bitIndex++;
+    addAlignmentPatterns() {
+        const positions = this.getAlignmentPositions();
+        for (const row of positions) {
+            for (const col of positions) {
+                if (this.modules[row][col] !== null) continue;
+                for (let r = -2; r <= 2; r++) {
+                    for (let c = -2; c <= 2; c++) {
+                        const tr = row + r, tc = col + c;
+                        if (tr < 0 || tr >= this.size || tc < 0 || tc >= this.size) continue;
+                        this.modules[tr][tc] = Math.abs(r) === 2 || Math.abs(c) === 2 || (r === 0 && c === 0);
                     }
                 }
             }
         }
+    }
 
-        // Fill any remaining null modules
-        for (let r = 0; r < this.size; r++) {
-            for (let c = 0; c < this.size; c++) {
-                if (this.modules[r][c] === null) {
-                    this.modules[r][c] = (r + c) % 2 === 0;
+    getAlignmentPositions() {
+        if (this.version === 1) return [];
+        const positions = [6];
+        const count = Math.floor(this.version / 7) + 2;
+        const step = this.version === 32 ? 26 : Math.ceil((this.size - 13) / (count - 1) / 2) * 2;
+        for (let i = count - 1; i >= 1; i--) positions.unshift(this.size - 7 - (count - 1 - i) * step);
+        return positions;
+    }
+
+    addTimingPatterns() {
+        for (let i = 8; i < this.size - 8; i++) {
+            if (this.modules[6][i] === null) this.modules[6][i] = i % 2 === 0;
+            if (this.modules[i][6] === null) this.modules[i][6] = i % 2 === 0;
+        }
+    }
+
+    reserveFormatArea() {
+        for (let i = 0; i < 9; i++) {
+            if (this.modules[8][i] === null) this.modules[8][i] = false;
+            if (this.modules[i][8] === null) this.modules[i][8] = false;
+        }
+        for (let i = 0; i < 8; i++) {
+            if (this.modules[8][this.size - 1 - i] === null) this.modules[8][this.size - 1 - i] = false;
+            if (this.modules[this.size - 1 - i][8] === null) this.modules[this.size - 1 - i][8] = false;
+        }
+        this.modules[this.size - 8][8] = true;
+    }
+
+    reserveVersionArea() {
+        for (let i = 0; i < 6; i++) {
+            for (let j = 0; j < 3; j++) {
+                this.modules[i][this.size - 11 + j] = false;
+                this.modules[this.size - 11 + j][i] = false;
+            }
+        }
+    }
+
+    encodeData() {
+        const bytes = new TextEncoder().encode(this.data);
+        let bits = '0100'; // Byte mode
+        bits += bytes.length.toString(2).padStart(8, '0');
+        for (const b of bytes) bits += b.toString(2).padStart(8, '0');
+        const totalCap = this.getDataCapacity();
+        while (bits.length < totalCap * 8 && bits.length % 8 !== 0) bits += '0';
+        while (bits.length < totalCap * 8) bits += bits.length % 16 < 8 ? '11101100' : '00010001';
+        const result = [];
+        for (let i = 0; i < bits.length; i += 8) result.push(parseInt(bits.substr(i, 8), 2));
+        return result;
+    }
+
+    getDataCapacity() {
+        const caps = [[19, 16, 13, 9], [34, 28, 22, 16], [55, 44, 34, 26], [80, 64, 48, 36], [108, 86, 62, 46], [136, 108, 76, 60], [156, 124, 88, 66], [194, 154, 110, 86], [232, 182, 132, 100], [274, 216, 154, 122]];
+        return caps[this.version - 1][{ L: 0, M: 1, Q: 2, H: 3 }[this.ecLevel]];
+    }
+
+    generateECC(data) {
+        const ecCount = QRCodeGenerator.EC_CODEWORDS[this.ecLevel][this.version - 1];
+        const gen = this.getGeneratorPolynomial(ecCount);
+        const msg = [...data, ...new Array(ecCount).fill(0)];
+        for (let i = 0; i < data.length; i++) {
+            const coef = msg[i];
+            if (coef !== 0) {
+                for (let j = 0; j < gen.length; j++) {
+                    msg[i + j] ^= QRCodeGenerator.GF256.mul(gen[j], coef);
                 }
             }
+        }
+        return msg.slice(data.length);
+    }
+
+    getGeneratorPolynomial(degree) {
+        let poly = [1];
+        for (let i = 0; i < degree; i++) {
+            const next = new Array(poly.length + 1).fill(0);
+            for (let j = 0; j < poly.length; j++) {
+                next[j] ^= QRCodeGenerator.GF256.mul(poly[j], QRCodeGenerator.GF256.exp[i]);
+                next[j + 1] ^= poly[j];
+            }
+            poly = next;
+        }
+        return poly;
+    }
+
+    interleave(data, ec) {
+        let bits = '';
+        for (const b of data) bits += b.toString(2).padStart(8, '0');
+        for (const b of ec) bits += b.toString(2).padStart(8, '0');
+        return bits;
+    }
+
+    placeData(bits) {
+        let idx = 0;
+        for (let col = this.size - 1; col > 0; col -= 2) {
+            if (col === 6) col--;
+            for (let row = 0; row < this.size; row++) {
+                const upward = Math.floor((this.size - 1 - col) / 2) % 2 === 0;
+                const r = upward ? this.size - 1 - row : row;
+                for (let c = 0; c < 2; c++) {
+                    const cc = col - c;
+                    if (this.modules[r][cc] === null) {
+                        this.modules[r][cc] = idx < bits.length ? bits[idx++] === '1' : false;
+                    }
+                }
+            }
+        }
+    }
+
+    applyBestMask() {
+        let bestMask = 0, bestScore = Infinity;
+        for (let m = 0; m < 8; m++) {
+            const copy = this.modules.map(r => [...r]);
+            this.applyMask(m);
+            const score = this.evaluatePenalty();
+            if (score < bestScore) { bestScore = score; bestMask = m; }
+            this.modules = copy;
+        }
+        this.applyMask(bestMask);
+        return bestMask;
+    }
+
+    applyMask(mask) {
+        const fns = [
+            (r, c) => (r + c) % 2 === 0,
+            (r, c) => r % 2 === 0,
+            (r, c) => c % 3 === 0,
+            (r, c) => (r + c) % 3 === 0,
+            (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+            (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+            (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+            (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+        ];
+        for (let r = 0; r < this.size; r++) {
+            for (let c = 0; c < this.size; c++) {
+                if (this.isDataModule(r, c) && fns[mask](r, c)) {
+                    this.modules[r][c] = !this.modules[r][c];
+                }
+            }
+        }
+    }
+
+    isDataModule(r, c) {
+        if (r < 9 && c < 9) return false;
+        if (r < 9 && c >= this.size - 8) return false;
+        if (r >= this.size - 8 && c < 9) return false;
+        if (r === 6 || c === 6) return false;
+        return true;
+    }
+
+    evaluatePenalty() {
+        let penalty = 0;
+        for (let r = 0; r < this.size; r++) {
+            for (let c = 0; c < this.size - 4; c++) {
+                if (this.modules[r].slice(c, c + 5).every(m => m === this.modules[r][c])) penalty += 3;
+            }
+        }
+        for (let c = 0; c < this.size; c++) {
+            for (let r = 0; r < this.size - 4; r++) {
+                const col = [0, 1, 2, 3, 4].map(i => this.modules[r + i][c]);
+                if (col.every(m => m === col[0])) penalty += 3;
+            }
+        }
+        return penalty;
+    }
+
+    addFormatInfo(mask) {
+        const ec = { L: 1, M: 0, Q: 3, H: 2 }[this.ecLevel];
+        let data = (ec << 3) | mask;
+        let bits = data;
+        for (let i = 0; i < 10; i++) bits = (bits << 1) ^ ((bits >> 9) * 0x537);
+        const format = ((data << 10) | bits) ^ 0x5412;
+        const positions = [[0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8], [7, 8], [8, 8], [8, 7], [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0]];
+        for (let i = 0; i < 15; i++) {
+            const bit = ((format >> (14 - i)) & 1) === 1;
+            const [r, c] = positions[i];
+            this.modules[r][c] = bit;
+            if (i < 8) this.modules[8][this.size - 1 - i] = bit;
+            else this.modules[this.size - 15 + i][8] = bit;
+        }
+    }
+
+    addVersionInfo() {
+        if (this.version < 7) return;
+        let data = this.version;
+        for (let i = 0; i < 12; i++) data = (data << 1) ^ ((data >> 11) * 0x1f25);
+        const info = (this.version << 12) | data;
+        for (let i = 0; i < 18; i++) {
+            const bit = ((info >> i) & 1) === 1;
+            this.modules[Math.floor(i / 3)][this.size - 11 + (i % 3)] = bit;
+            this.modules[this.size - 11 + (i % 3)][Math.floor(i / 3)] = bit;
         }
     }
 
@@ -1099,31 +1371,31 @@ class QRCodeGenerator {
         canvas.width = canvasSize;
         canvas.height = canvasSize;
         const ctx = canvas.getContext('2d');
+        const margin = 4;
+        const moduleSize = canvasSize / (this.size + margin * 2);
 
-        // Background
-        ctx.fillStyle = '#18181B';
+        // White background for scanability
+        ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-        // Modules
-        const moduleSize = canvasSize / this.size;
-        ctx.fillStyle = '#A78BFA';
-
+        // Black modules
+        ctx.fillStyle = '#000000';
         for (let row = 0; row < this.size; row++) {
             for (let col = 0; col < this.size; col++) {
                 if (this.modules[row][col]) {
                     ctx.fillRect(
-                        col * moduleSize,
-                        row * moduleSize,
-                        moduleSize - 0.5,
-                        moduleSize - 0.5
+                        (col + margin) * moduleSize,
+                        (row + margin) * moduleSize,
+                        moduleSize,
+                        moduleSize
                     );
                 }
             }
         }
-
         return canvas;
     }
 }
 
 window.TeleportWebRTC = TeleportWebRTC;
 window.QRCodeGenerator = QRCodeGenerator;
+

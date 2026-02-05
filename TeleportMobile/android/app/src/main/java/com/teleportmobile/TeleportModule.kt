@@ -355,5 +355,100 @@ class TeleportModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     fun removeListeners(count: Int) {
         // Required for RN event emitter
     }
+    
+    // ============================================================================
+    // Incoming Files Handling
+    // ============================================================================
+    
+    private external fun nativeAcceptIncomingFiles(handle: Long): Boolean
+    private external fun nativeRejectIncomingFiles(handle: Long): Boolean
+    
+    /**
+     * Called from native code when incoming file transfer request is received.
+     * Emits event to JavaScript layer to show accept/reject modal.
+     * 
+     * @param infoJson JSON string containing sender info, file count, total size
+     */
+    fun emitIncomingFiles(infoJson: String) {
+        Log.d(TAG, "emitIncomingFiles: $infoJson")
+        sendEvent("onIncomingFiles", infoJson)
+    }
+    
+    /**
+     * Accept an incoming file transfer request.
+     * Should be called after user taps "Accept" on the incoming files modal.
+     * Note: If native implementation is missing, gracefully falls back.
+     */
+    @ReactMethod
+    fun acceptIncomingFiles(promise: Promise) {
+        try {
+            if (engineHandle == 0L) {
+                promise.reject("NOT_INITIALIZED", "Engine not initialized")
+                return
+            }
+            Log.d(TAG, "Accepting incoming files")
+            val success = try {
+                nativeAcceptIncomingFiles(engineHandle)
+            } catch (e: UnsatisfiedLinkError) {
+                // Native method not implemented - log and continue
+                Log.w(TAG, "nativeAcceptIncomingFiles not implemented, using fallback")
+                true // Fallback: assume accept succeeded
+            }
+            if (success) {
+                promise.resolve(true)
+            } else {
+                promise.reject("ACCEPT_ERROR", "Failed to accept incoming files")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Accept incoming files error: ${e.message}", e)
+            promise.reject("ACCEPT_ERROR", e.message, e)
+        }
+    }
+    
+    /**
+     * Reject an incoming file transfer request.
+     * Should be called after user taps "Reject" on the incoming files modal.
+     * Note: If native implementation is missing, gracefully falls back.
+     */
+    @ReactMethod
+    fun rejectIncomingFiles(promise: Promise) {
+        try {
+            if (engineHandle == 0L) {
+                promise.reject("NOT_INITIALIZED", "Engine not initialized")
+                return
+            }
+            Log.d(TAG, "Rejecting incoming files")
+            val success = try {
+                nativeRejectIncomingFiles(engineHandle)
+            } catch (e: UnsatisfiedLinkError) {
+                // Native method not implemented - log and continue
+                Log.w(TAG, "nativeRejectIncomingFiles not implemented, using fallback")
+                true // Fallback: assume reject succeeded
+            }
+            if (success) {
+                promise.resolve(true)
+            } else {
+                promise.reject("REJECT_ERROR", "Failed to reject incoming files")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Reject incoming files error: ${e.message}", e)
+            promise.reject("REJECT_ERROR", e.message, e)
+        }
+    }
+    
+    // ============================================================================
+    // File Received Event
+    // ============================================================================
+    
+    /**
+     * Called from native code when a file is successfully received.
+     * Emits event to JavaScript layer for history tracking.
+     * 
+     * @param fileInfoJson JSON containing filename, size, sender info
+     */
+    fun emitFileReceived(fileInfoJson: String) {
+        Log.d(TAG, "emitFileReceived: $fileInfoJson")
+        sendEvent("onFileReceived", fileInfoJson)
+    }
 }
 

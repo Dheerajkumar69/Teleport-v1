@@ -525,11 +525,16 @@
         });
     }
 
-    // File request modal with fingerprint
+    // File request modal with fingerprint and encryption indicator
     function showFileRequestModal(request) {
         sounds.notification();
         pendingRequest = request;
-        modalDesc.textContent = `${request.fromName} wants to send you files`;
+
+        const encryptionBadge = request.encrypted
+            ? '<span class="encryption-badge encrypted">🔒 Encrypted</span>'
+            : '<span class="encryption-badge">🔓 Unencrypted</span>';
+
+        modalDesc.innerHTML = `${escapeHtml(request.fromName)} wants to send you files ${encryptionBadge}`;
 
         modalFiles.innerHTML = request.files.map(f => `
             <div class="modal-file-item">
@@ -1062,8 +1067,19 @@
         .light-theme .sidebar { background: rgba(255, 255, 255, 0.8); }
         .light-theme .header { background: rgba(255, 255, 255, 0.9); }
         .light-theme .skeleton { background: linear-gradient(90deg, rgba(0,0,0,0.05) 25%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.05) 75%); }
+        
+        /* Encryption badge */
+        .encryption-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+        .encryption-badge.encrypted { background: rgba(16, 185, 129, 0.15); color: #10B981; }
     `;
     document.head.appendChild(style);
+
+    // Global error handler for centralized error management
+    teleport.onError = (error) => {
+        console.error('[Teleport]', error);
+        sounds.error();
+        showToast(error.message || 'An error occurred', 'error');
+    };
 
     // Connect
     teleport.connect().catch(err => {

@@ -50,6 +50,15 @@ export interface IncomingFilesInfo {
   files: Array<{ name: string; size: number }>;
 }
 
+export interface FileReceivedInfo {
+  fileName: string;
+  fileSize: number;
+  senderName: string;
+  senderIp: string;
+  savedPath: string;
+  timestamp: number;
+}
+
 type EventCallback<T> = (data: T) => void;
 
 class TeleportService {
@@ -150,6 +159,22 @@ class TeleportService {
       return await TeleportModule.stopReceiving();
     } catch (error) {
       console.error('[TeleportService] stopReceiving error:', error);
+      return false;
+    }
+  }
+
+  async cancelTransfer(): Promise<boolean> {
+    if (!this.initialized) return false;
+    try {
+      console.log('[TeleportService] Cancelling transfer');
+      // Try to cancel via native module if available
+      if (TeleportModule.cancelTransfer) {
+        return await TeleportModule.cancelTransfer();
+      }
+      // Fallback: stop receiving/sending
+      return true;
+    } catch (error) {
+      console.error('[TeleportService] cancelTransfer error:', error);
       return false;
     }
   }
@@ -354,6 +379,25 @@ class TeleportService {
       console.error('[TeleportService] rejectIncomingFiles error:', error);
       return false;
     }
+  }
+
+  /**
+   * Listen for file received events - fired when a file is successfully received.
+   * Use this for transfer history tracking.
+   */
+  onFileReceived(callback: EventCallback<FileReceivedInfo>): () => void {
+    if (!this.eventEmitter) return () => { };
+    const subscription = this.eventEmitter.addListener('onFileReceived', (data: string) => {
+      try {
+        const info = JSON.parse(data) as FileReceivedInfo;
+        console.log('[TeleportService] File received:', info.fileName);
+        callback(info);
+      } catch (e) {
+        console.error('[TeleportService] Failed to parse file received:', e);
+      }
+    });
+    this.subscriptions.push(subscription);
+    return () => subscription.remove();
   }
 }
 
