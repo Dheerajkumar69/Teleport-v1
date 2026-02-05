@@ -205,7 +205,7 @@ class TeleportWebRTC {
 
     connect(serverUrl = null) {
         return new Promise((resolve, reject) => {
-            this.serverUrl = serverUrl || `ws://${window.location.hostname}:3000`;
+            this.serverUrl = serverUrl || 'wss://teleport-signaling.onrender.com';
 
             const timeoutId = setTimeout(() => {
                 reject(new Error('Connection timeout'));
