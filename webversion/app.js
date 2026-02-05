@@ -395,9 +395,12 @@
     };
 
     teleport.onFileRequest = (request) => {
+        console.log('[Teleport] File request received from:', request.fromName, 'files:', request.files?.length);
         if (isReceiving) {
             showFileRequestModal(request);
         } else {
+            console.log('[Teleport] Rejecting - receive mode is OFF');
+            showToast(`${request.fromName} tried to send files. Enable Receive mode first!`, 'warning');
             teleport.rejectFileRequest(request.from);
         }
     };

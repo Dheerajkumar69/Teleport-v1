@@ -155,14 +155,18 @@ wss.on('connection', (ws) => {
             case 'file-request': {
                 // Relay file transfer request
                 const { to, files } = message;
+                console.log(`[${peerId}] File request to ${to}, files:`, files?.length);
                 if (to && peers.has(to)) {
                     const peer = peers.get(peerId);
+                    console.log(`[${peerId}] Relaying file request to ${to}`);
                     sendToPeer(to, {
                         type: 'file-request',
                         from: peerId,
                         fromName: peer?.name || 'Unknown',
                         files
                     });
+                } else {
+                    console.log(`[${peerId}] Target peer ${to} not found!`);
                 }
                 break;
             }
