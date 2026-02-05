@@ -3,7 +3,7 @@
  * Handles navigation, scroll animations, and interactions
  */
 
-(function() {
+(function () {
     'use strict';
 
     // ============================================
@@ -37,17 +37,17 @@
     // Navbar Background on Scroll
     // ============================================
     let lastScroll = 0;
-    
+
     window.addEventListener('scroll', () => {
         const currentScroll = window.pageYOffset;
-        
+
         // Add subtle shadow when scrolled
         if (currentScroll > 50) {
             nav.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.3)';
         } else {
             nav.style.boxShadow = 'none';
         }
-        
+
         lastScroll = currentScroll;
     }, { passive: true });
 
@@ -55,16 +55,16 @@
     // Smooth Scroll for Anchor Links
     // ============================================
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function(e) {
+        anchor.addEventListener('click', function (e) {
             const targetId = this.getAttribute('href');
             if (targetId === '#') return;
-            
+
             const targetElement = document.querySelector(targetId);
             if (targetElement) {
                 e.preventDefault();
                 const navHeight = nav.offsetHeight;
                 const targetPosition = targetElement.offsetTop - navHeight - 20;
-                
+
                 window.scrollTo({
                     top: targetPosition,
                     behavior: 'smooth'
@@ -96,7 +96,7 @@
     const animatedElements = document.querySelectorAll(
         '.feature-card, .download-card, .step, .fade-in'
     );
-    
+
     animatedElements.forEach(el => {
         observer.observe(el);
     });
@@ -105,9 +105,9 @@
     // Download Button Interactions
     // ============================================
     downloadButtons.forEach(button => {
-        button.addEventListener('click', function(e) {
+        button.addEventListener('click', function (e) {
             const platform = this.dataset.platform;
-            
+
             if (platform === 'windows') {
                 // In production, this would link to the actual .exe
                 showToast('Desktop download starting...', 'info');
@@ -124,19 +124,16 @@
     // Web App Launch
     // ============================================
     if (launchWebApp) {
-        launchWebApp.addEventListener('click', function(e) {
+        launchWebApp.addEventListener('click', function (e) {
             e.preventDefault();
-            
-            // Show coming soon message or redirect to web app
+
+            // Show launching message and redirect to web app
             showToast('Web App launching...', 'success');
-            
-            // In production, redirect to the web app
-            // window.location.href = '/app';
-            
-            // For now, scroll to a section or show modal
+
+            // Navigate to the web app after a brief moment
             setTimeout(() => {
-                showToast('Web version coming soon! Download the desktop app for now.', 'info');
-            }, 1500);
+                window.location.href = '../webversion/index.html';
+            }, 500);
         });
     }
 
@@ -246,7 +243,7 @@
         window.addEventListener('scroll', () => {
             const scrolled = window.pageYOffset;
             const heroHeight = document.querySelector('.hero').offsetHeight;
-            
+
             if (scrolled < heroHeight) {
                 const parallaxValue = scrolled * 0.3;
                 if (heroGlow) {

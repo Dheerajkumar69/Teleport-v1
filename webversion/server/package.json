@@ -1,0 +1,15 @@
+{
+  "name": "teleport-signaling",
+  "version": "1.0.0",
+  "description": "WebRTC signaling server for Teleport web app",
+  "main": "signaling.js",
+  "scripts": {
+    "start": "node signaling.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
