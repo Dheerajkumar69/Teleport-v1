@@ -108,6 +108,13 @@ bool TeleportBridge::Initialize() {
     return false;
   }
 
+  // Auto-connect to web signaling server for web ↔ desktop transfers
+  // Try local server first (for development), then production
+  if (!ConnectToWebSignaling("ws://localhost:3000")) {
+    // Local server not available, will try reconnecting later
+    // Production WSS requires SSL support which is not yet implemented
+  }
+
   return true;
 }
 
@@ -216,8 +223,21 @@ void TeleportBridge::StopDiscovery() {
 }
 
 std::vector<DeviceInfo> TeleportBridge::GetDevices() const {
-  std::lock_guard<std::mutex> lock(devicesMutex_);
-  return devices_;
+  std::vector<DeviceInfo> allDevices;
+
+  // Add local devices
+  {
+    std::lock_guard<std::mutex> lock(devicesMutex_);
+    allDevices = devices_;
+  }
+
+  // Add web peers
+  {
+    std::lock_guard<std::mutex> lock(webPeersMutex_);
+    allDevices.insert(allDevices.end(), webPeers_.begin(), webPeers_.end());
+  }
+
+  return allDevices;
 }
 
 void TeleportBridge::AddManualDevice(const char *ip, uint16_t port,
@@ -273,7 +293,36 @@ bool TeleportBridge::SendFiles(const std::string &deviceId,
       return false;
   }
 
-  // Find device
+  // Check if this is a web peer - if so, use relay transfer
+  bool isWebPeer = false;
+  std::string webPeerName;
+  {
+    std::lock_guard<std::mutex> lock(webPeersMutex_);
+    for (const auto &peer : webPeers_) {
+      if (peer.id == deviceId) {
+        isWebPeer = true;
+        webPeerName = peer.name;
+        break;
+      }
+    }
+  }
+
+  if (isWebPeer) {
+    // Send via web signaling relay
+    if (!webSignaling_ || !webSignalingConnected_.load()) {
+      return false;
+    }
+
+    // Send all files via relay
+    for (const auto &path : filePaths) {
+      if (!SendFileToWebPeer(deviceId, path)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Find local device
   TeleportDevice targetDevice = {};
   bool found = false;
   {
