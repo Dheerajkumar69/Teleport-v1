@@ -71,8 +71,12 @@ class TeleportWebRTC {
 
         this.CHUNK_SIZE = 16384;
         this.MAX_BUFFER_SIZE = 1024 * 1024;
-        this.TRANSFER_TIMEOUT = 30000;
+        this.TRANSFER_TIMEOUT = 300000; // 5 minutes base timeout
         this.CONNECTION_TIMEOUT = 15000;
+
+        // Streaming config for large files
+        this.STREAMING_THRESHOLD = 50 * 1024 * 1024; // 50MB - use streaming above this
+        this.useFileSystemAPI = 'showSaveFilePicker' in window;
 
         // E2E Encryption
         this.keyPair = null;
@@ -205,7 +209,20 @@ class TeleportWebRTC {
 
     connect(serverUrl = null) {
         return new Promise((resolve, reject) => {
-            this.serverUrl = serverUrl || 'wss://teleport-signaling.onrender.com';
+            // Auto-detect: use localhost for local development, Render for production
+            if (serverUrl) {
+                this.serverUrl = serverUrl;
+            } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                this.serverUrl = 'ws://localhost:3000';
+                console.log('[Teleport] Using local signaling server');
+            } else if (this.isPrivateIP(window.location.hostname)) {
+                // Local network testing - connect to signaling server on same host
+                this.serverUrl = `ws://${window.location.hostname}:3000`;
+                console.log('[Teleport] Using local network signaling server:', this.serverUrl);
+            } else {
+                this.serverUrl = 'wss://teleport-signaling.onrender.com';
+                console.log('[Teleport] Using production signaling server');
+            }
 
             const timeoutId = setTimeout(() => {
                 reject(new Error('Connection timeout'));
@@ -380,6 +397,18 @@ class TeleportWebRTC {
         const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
         return ipv4Regex.test(ip) || ipv6Regex.test(ip) || hostnameRegex.test(ip);
+    }
+
+    // Check if an IP is a private/local network IP
+    isPrivateIP(ip) {
+        // Private IP ranges: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+        const privateRanges = [
+            /^10\./,
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+            /^192\.168\./,
+            /^127\./
+        ];
+        return privateRanges.some(regex => regex.test(ip));
     }
 
     async connectToManualIP(ip, port = 3000) {
@@ -596,17 +625,61 @@ class TeleportWebRTC {
 
     // ==================== DATA CHANNEL ====================
 
-    handleDataChannelMessage(peerId, data) {
+    async handleDataChannelMessage(peerId, data) {
         if (typeof data === 'string') {
             const msg = JSON.parse(data);
 
             if (msg.type === 'file-start') {
-                this.incomingChunks.set(msg.transferId, {
+                // Initialize transfer state
+                const transferState = {
                     metadata: msg,
-                    chunks: [],
+                    chunks: [], // Only used for small files
                     received: 0,
-                    startTime: Date.now()
-                });
+                    startTime: Date.now(),
+                    useStreaming: msg.size > this.STREAMING_THRESHOLD,
+                    writer: null,
+                    fileHandle: null
+                };
+
+                // For large files, try to use File System Access API
+                if (transferState.useStreaming && this.useFileSystemAPI) {
+                    try {
+                        const options = {
+                            suggestedName: msg.filename,
+                            types: [{
+                                description: 'File',
+                                accept: { [msg.mimeType || 'application/octet-stream']: ['.' + (msg.filename.split('.').pop() || 'bin')] }
+                            }]
+                        };
+                        transferState.fileHandle = await window.showSaveFilePicker(options);
+                        const writable = await transferState.fileHandle.createWritable();
+                        transferState.writer = writable;
+                        console.log('[FileTransfer] Using File System Access API for streaming');
+                    } catch (e) {
+                        // User cancelled or API not available, fall back to memory
+                        console.log('[FileTransfer] File picker cancelled/unavailable, using memory buffer');
+                        transferState.useStreaming = false;
+                    }
+                } else if (transferState.useStreaming) {
+                    // Try StreamSaver.js fallback for Firefox/Safari
+                    if (window.streamSaver) {
+                        try {
+                            const fileStream = window.streamSaver.createWriteStream(msg.filename, {
+                                size: msg.size
+                            });
+                            transferState.writer = fileStream.getWriter();
+                            console.log('[FileTransfer] Using StreamSaver.js for streaming');
+                        } catch (e) {
+                            console.log('[FileTransfer] StreamSaver.js failed, using memory buffer');
+                            transferState.useStreaming = false;
+                        }
+                    } else {
+                        console.log('[FileTransfer] No streaming API available, using memory buffer (file may be too large)');
+                        transferState.useStreaming = false;
+                    }
+                }
+
+                this.incomingChunks.set(msg.transferId, transferState);
                 this.activeTransfers.set(msg.transferId, {
                     paused: false,
                     cancelled: false,
@@ -624,7 +697,7 @@ class TeleportWebRTC {
                 this.handleTransferPause(msg.transferId, msg.paused);
             }
         } else {
-            const view = new DataView(data);
+            // Binary chunk data
             const decoder = new TextDecoder();
             const transferId = decoder.decode(new Uint8Array(data, 0, 36));
             const chunkData = new Uint8Array(data, 36);
@@ -633,7 +706,17 @@ class TeleportWebRTC {
             const state = this.activeTransfers.get(transferId);
 
             if (transfer && state && !state.cancelled && !state.paused) {
-                transfer.chunks.push(chunkData);
+                // Stream to disk or buffer in memory
+                if (transfer.useStreaming && transfer.writer) {
+                    try {
+                        await transfer.writer.write(chunkData);
+                    } catch (e) {
+                        console.error('[FileTransfer] Stream write error:', e);
+                    }
+                } else {
+                    transfer.chunks.push(chunkData);
+                }
+
                 transfer.received += chunkData.byteLength;
                 state.bytesTransferred = transfer.received;
 
@@ -659,41 +742,62 @@ class TeleportWebRTC {
         }
     }
 
-    assembleFile(transferId) {
+    async assembleFile(transferId) {
         const transfer = this.incomingChunks.get(transferId);
         const state = this.activeTransfers.get(transferId);
 
         if (!transfer || state?.cancelled) {
+            // Clean up streaming writer if exists
+            if (transfer?.writer) {
+                try { await transfer.writer.close(); } catch (e) { }
+            }
             this.incomingChunks.delete(transferId);
             this.activeTransfers.delete(transferId);
             return;
         }
 
-        const totalSize = transfer.chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-        const combined = new Uint8Array(totalSize);
-        let offset = 0;
+        let totalSize = transfer.received;
 
-        for (const chunk of transfer.chunks) {
-            combined.set(chunk, offset);
-            offset += chunk.byteLength;
+        // Handle streaming vs memory buffer
+        if (transfer.useStreaming && transfer.writer) {
+            // File was streamed directly to disk
+            try {
+                await transfer.writer.close();
+                console.log('[FileTransfer] Streaming complete, file saved to disk');
+            } catch (e) {
+                console.error('[FileTransfer] Error closing stream:', e);
+            }
+        } else {
+            // Memory buffer approach - assemble and download
+            totalSize = transfer.chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+            const combined = new Uint8Array(totalSize);
+            let offset = 0;
+
+            for (const chunk of transfer.chunks) {
+                combined.set(chunk, offset);
+                offset += chunk.byteLength;
+            }
+
+            const blob = new Blob([combined], { type: transfer.metadata.mimeType || 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+
+            // Preserve folder structure in filename
+            let filename = transfer.metadata.filename;
+            if (state?.relativePath) {
+                filename = state.relativePath;
+            }
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            // Clear chunks to free memory
+            transfer.chunks = [];
         }
-
-        const blob = new Blob([combined], { type: transfer.metadata.mimeType || 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-
-        // Preserve folder structure in filename
-        let filename = transfer.metadata.filename;
-        if (state?.relativePath) {
-            filename = state.relativePath;
-        }
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
 
         this.saveTransferToHistory({
             filename: transfer.metadata.filename,
@@ -905,14 +1009,26 @@ class TeleportWebRTC {
     }
 
     handleFileResponse(fromPeerId, accepted) {
+        console.log('[FileTransfer] handleFileResponse called:', { fromPeerId, accepted });
         const pending = this.pendingFiles.get(fromPeerId);
-        if (!pending) return;
+        if (!pending) {
+            console.log('[FileTransfer] No pending files found for peer:', fromPeerId);
+            return;
+        }
 
         if (accepted) {
+            console.log('[FileTransfer] Transfer accepted, starting sendFiles...');
             this.sendFiles(fromPeerId, pending.files)
-                .then(pending.resolve)
-                .catch(pending.reject);
+                .then(() => {
+                    console.log('[FileTransfer] sendFiles completed successfully');
+                    pending.resolve();
+                })
+                .catch((err) => {
+                    console.error('[FileTransfer] sendFiles failed:', err);
+                    pending.reject(err);
+                });
         } else {
+            console.log('[FileTransfer] Transfer rejected by receiver');
             pending.reject(new Error('Transfer rejected'));
         }
 
@@ -928,13 +1044,26 @@ class TeleportWebRTC {
     }
 
     async sendFiles(targetPeerId, files) {
+        console.log('[FileTransfer] sendFiles called for peer:', targetPeerId);
         const dc = this.dataChannels.get(targetPeerId);
-        if (!dc || dc.readyState !== 'open') throw new Error('DataChannel not ready');
+        console.log('[FileTransfer] DataChannel state:', dc?.readyState, 'for peer:', targetPeerId);
+
+        if (!dc) {
+            console.error('[FileTransfer] No DataChannel found for peer:', targetPeerId);
+            throw new Error('DataChannel not found');
+        }
+        if (dc.readyState !== 'open') {
+            console.error('[FileTransfer] DataChannel not open, state:', dc.readyState);
+            throw new Error('DataChannel not ready - state: ' + dc.readyState);
+        }
 
         const totalFiles = files.length;
+        console.log('[FileTransfer] Starting to send', totalFiles, 'files...');
         for (let i = 0; i < files.length; i++) {
+            console.log('[FileTransfer] Sending file', i + 1, 'of', totalFiles, ':', files[i].name);
             await this.sendFile(dc, files[i], i, totalFiles);
         }
+        console.log('[FileTransfer] All files sent!');
     }
 
     async sendFile(dc, file, fileIndex = 0, totalFiles = 1, retryCount = 0) {
