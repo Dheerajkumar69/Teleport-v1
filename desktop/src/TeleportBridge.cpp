@@ -4,6 +4,8 @@
  */
 
 #include "TeleportBridge.h"
+#include "WebSignalingClient.h"
+#include <fstream>
 
 #ifdef _WIN32
 #include <ShlObj.h>
@@ -585,6 +587,122 @@ void TeleportBridge::StopHotspot() {
     hotspotActive_.store(false);
     memset(&hotspotInfo_, 0, sizeof(hotspotInfo_));
   }
+}
+
+// ============ Web Signaling ============
+
+bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
+  if (webSignalingConnected_.load()) {
+    return true; // Already connected
+  }
+
+  webSignaling_ = std::make_unique<teleport::WebSignalingClient>();
+
+  // Set up callbacks
+  webSignaling_->setOnConnected(
+      [this]() { webSignalingConnected_.store(true); });
+
+  webSignaling_->setOnDisconnected([this](const std::string &reason) {
+    webSignalingConnected_.store(false);
+  });
+
+  webSignaling_->setOnPeersUpdated(
+      [this](const std::vector<teleport::WebPeer> &peers) {
+        std::lock_guard<std::mutex> lock(webPeersMutex_);
+        webPeers_.clear();
+        for (const auto &peer : peers) {
+          DeviceInfo info;
+          info.id = peer.id;
+          info.name = peer.name;
+          info.os = "Web";
+          info.ip = "";
+          info.port = 0;
+          info.lastSeen = GetTickCount64();
+          info.isWeb = true;
+          info.isNew = true;
+          webPeers_.push_back(info);
+        }
+      });
+
+  webSignaling_->setOnFileRequest(
+      [this](const std::string &fromId, const std::string &fromName,
+             const std::vector<teleport::FileInfo> &files) {
+        // Convert to IncomingRequest
+        std::lock_guard<std::mutex> lock(requestMutex_);
+        pendingRequest_.sender.id = fromId;
+        pendingRequest_.sender.name = fromName;
+        pendingRequest_.sender.os = "Web";
+        pendingRequest_.sender.ip = "";
+        pendingRequest_.sender.isWeb = true;
+        pendingRequest_.files.clear();
+        pendingRequest_.totalSize = 0;
+
+        for (const auto &file : files) {
+          pendingRequest_.files.emplace_back(file.name, file.size);
+          pendingRequest_.totalSize += file.size;
+        }
+
+        hasPendingRequest_.store(true);
+        pendingRequestResponse_.store(-1);
+      });
+
+  webSignaling_->setOnTransferComplete(
+      [this](const std::string &transferId, const std::string &filename,
+             const std::vector<uint8_t> &data) {
+        // Save received file
+        std::string outputPath = downloadPath_ + "/" + filename;
+        std::ofstream file(outputPath, std::ios::binary);
+        if (file) {
+          file.write(reinterpret_cast<const char *>(data.data()), data.size());
+        }
+      });
+
+  bool success = webSignaling_->connect(serverUrl, deviceName_);
+  if (success) {
+    webSignalingConnected_.store(true);
+  }
+  return success;
+}
+
+void TeleportBridge::DisconnectFromWebSignaling() {
+  if (webSignaling_) {
+    webSignaling_->disconnect();
+    webSignaling_.reset();
+  }
+  webSignalingConnected_.store(false);
+
+  std::lock_guard<std::mutex> lock(webPeersMutex_);
+  webPeers_.clear();
+}
+
+bool TeleportBridge::SendFileToWebPeer(const std::string &peerId,
+                                       const std::string &filePath) {
+  if (!webSignaling_ || !webSignalingConnected_.load()) {
+    return false;
+  }
+
+  // Read file into memory
+  std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+  if (!file) {
+    return false;
+  }
+
+  std::streamsize size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  std::vector<uint8_t> data(size);
+  if (!file.read(reinterpret_cast<char *>(data.data()), size)) {
+    return false;
+  }
+
+  // Extract filename from path
+  std::string filename = filePath;
+  size_t lastSlash = filePath.find_last_of("/\\");
+  if (lastSlash != std::string::npos) {
+    filename = filePath.substr(lastSlash + 1);
+  }
+
+  return webSignaling_->sendFileViaRelay(peerId, filename, data);
 }
 
 } // namespace teleport::ui

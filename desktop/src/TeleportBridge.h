@@ -7,11 +7,17 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <teleport/teleport.h>
 #include <thread>
 #include <vector>
+
+// Forward declare WebSignalingClient
+namespace teleport {
+class WebSignalingClient;
+}
 
 namespace teleport::ui {
 
@@ -27,6 +33,7 @@ struct DeviceInfo {
   int64_t lastSeen;
   bool isNew = false;  // For animation
   float fadeIn = 0.0f; // Animation progress
+  bool isWeb = false;  // True if this is a web peer (via signaling)
 };
 
 /**
@@ -243,6 +250,30 @@ public:
    */
   TeleportHotspotInfo GetHotspotInfo() const { return hotspotInfo_; }
 
+  // ============ Web Signaling (for web <-> desktop transfer) ============
+
+  /**
+   * @brief Connect to web signaling server
+   */
+  bool ConnectToWebSignaling(
+      const std::string &serverUrl = "ws://teleport-signaling.onrender.com");
+
+  /**
+   * @brief Disconnect from web signaling
+   */
+  void DisconnectFromWebSignaling();
+
+  /**
+   * @brief Check if connected to web signaling
+   */
+  bool IsWebSignalingConnected() const { return webSignalingConnected_.load(); }
+
+  /**
+   * @brief Send file to a web peer via relay
+   */
+  bool SendFileToWebPeer(const std::string &peerId,
+                         const std::string &filePath);
+
 private:
   TeleportEngine *engine_ = nullptr;
   TeleportTransfer *currentTransfer_ = nullptr;
@@ -283,6 +314,12 @@ private:
   // Hotspot state
   std::atomic<bool> hotspotActive_{false};
   TeleportHotspotInfo hotspotInfo_ = {};
+
+  // Web Signaling state
+  std::unique_ptr<teleport::WebSignalingClient> webSignaling_;
+  std::atomic<bool> webSignalingConnected_{false};
+  mutable std::mutex webPeersMutex_;
+  std::vector<DeviceInfo> webPeers_;
 
   // Constants for timeouts and limits
   static constexpr int kMaxTransferThreads = 8;

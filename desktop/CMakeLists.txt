@@ -131,11 +131,13 @@ elseif(UNIX AND NOT APPLE)
         src/main_linux.cpp
         src/Application_sdl.cpp
         src/platform/FileDialog_linux.cpp
+        src/WebSignalingClient.cpp
     )
 
     set(DESKTOP_LINUX_HEADERS
         src/Application_sdl.h
         src/platform/FileDialog_linux.h
+        src/WebSignalingClient.h
     )
 
     add_executable(TeleportUI
