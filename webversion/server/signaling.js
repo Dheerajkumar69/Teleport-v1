@@ -184,6 +184,70 @@ wss.on('connection', (ws) => {
                 break;
             }
 
+            // ============ SERVER RELAY MODE ============
+            // Used when WebRTC P2P fails due to NAT/firewall
+
+            case 'relay-start': {
+                // Start a relay transfer
+                const { to, transferId, filename, size, mimeType, fileIndex, totalFiles } = message;
+                console.log(`[${peerId}] Starting relay transfer to ${to}: ${filename}`);
+                if (to && peers.has(to)) {
+                    sendToPeer(to, {
+                        type: 'relay-start',
+                        from: peerId,
+                        transferId,
+                        filename,
+                        size,
+                        mimeType,
+                        fileIndex,
+                        totalFiles
+                    });
+                }
+                break;
+            }
+
+            case 'relay-chunk': {
+                // Relay a file chunk (base64 encoded for JSON)
+                const { to, transferId, data, offset } = message;
+                if (to && peers.has(to)) {
+                    sendToPeer(to, {
+                        type: 'relay-chunk',
+                        from: peerId,
+                        transferId,
+                        data,
+                        offset
+                    });
+                }
+                break;
+            }
+
+            case 'relay-end': {
+                // End relay transfer
+                const { to, transferId } = message;
+                console.log(`[${peerId}] Ending relay transfer to ${to}`);
+                if (to && peers.has(to)) {
+                    sendToPeer(to, {
+                        type: 'relay-end',
+                        from: peerId,
+                        transferId
+                    });
+                }
+                break;
+            }
+
+            case 'relay-cancel': {
+                // Cancel relay transfer
+                const { to, transferId } = message;
+                if (to && peers.has(to)) {
+                    sendToPeer(to, {
+                        type: 'relay-cancel',
+                        from: peerId,
+                        transferId
+                    });
+                }
+                break;
+            }
+
             default:
                 console.log(`[${peerId}] Unknown message type:`, message.type);
         }

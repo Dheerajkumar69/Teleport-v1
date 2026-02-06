@@ -14,8 +14,10 @@ class TeleportWebRTC {
         this.pendingFiles = new Map();
         this.incomingChunks = new Map();
         this.activeTransfers = new Map();
+        this.relayIncoming = new Map(); // For server relay fallback
         this.transferQueue = [];
         this.isProcessingQueue = false;
+        this.useRelayFallback = true; // Enable automatic relay fallback
 
         // Session sharing via BroadcastChannel
         this.broadcastChannel = null;
@@ -485,6 +487,114 @@ class TeleportWebRTC {
                 case 'file-response':
                     this.handleFileResponse(message.from, message.accepted);
                     break;
+
+                // ============ SERVER RELAY MODE HANDLERS ============
+                // Used when WebRTC P2P fails due to NAT/firewall
+
+                case 'relay-start': {
+                    // Receiver: incoming relay transfer
+                    console.log('[Relay] Receiving file via server relay:', message.filename);
+                    const transfer = {
+                        id: message.transferId,
+                        from: message.from,
+                        filename: message.filename,
+                        size: message.size,
+                        mimeType: message.mimeType,
+                        chunks: [],
+                        receivedBytes: 0,
+                        fileIndex: message.fileIndex,
+                        totalFiles: message.totalFiles
+                    };
+                    this.relayIncoming.set(message.transferId, transfer);
+
+                    // Create state for progress tracking
+                    this.activeTransfers.set(message.transferId, {
+                        filename: message.filename,
+                        totalSize: message.size,
+                        transferred: 0,
+                        isRelay: true
+                    });
+                    break;
+                }
+
+                case 'relay-chunk': {
+                    // Receiver: incoming chunk via relay
+                    const transfer = this.relayIncoming.get(message.transferId);
+                    if (transfer) {
+                        // Decode base64 chunk
+                        const binaryStr = atob(message.data);
+                        const bytes = new Uint8Array(binaryStr.length);
+                        for (let i = 0; i < binaryStr.length; i++) {
+                            bytes[i] = binaryStr.charCodeAt(i);
+                        }
+                        transfer.chunks.push(bytes);
+                        transfer.receivedBytes += bytes.length;
+
+                        // Update progress
+                        if (this.onProgress) {
+                            this.onProgress({
+                                transferId: message.transferId,
+                                filename: transfer.filename,
+                                progress: Math.round((transfer.receivedBytes / transfer.size) * 100),
+                                received: transfer.receivedBytes,
+                                total: transfer.size,
+                                speed: 0,
+                                isRelay: true
+                            });
+                        }
+                    }
+                    break;
+                }
+
+                case 'relay-end': {
+                    // Receiver: complete relay transfer
+                    const transfer = this.relayIncoming.get(message.transferId);
+                    if (transfer) {
+                        console.log('[Relay] Transfer complete:', transfer.filename);
+
+                        // Assemble file from chunks
+                        const totalSize = transfer.chunks.reduce((sum, c) => sum + c.length, 0);
+                        const combined = new Uint8Array(totalSize);
+                        let offset = 0;
+                        for (const chunk of transfer.chunks) {
+                            combined.set(chunk, offset);
+                            offset += chunk.length;
+                        }
+
+                        // Create download
+                        const blob = new Blob([combined], { type: transfer.mimeType || 'application/octet-stream' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = transfer.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+
+                        // Cleanup
+                        this.relayIncoming.delete(message.transferId);
+                        this.activeTransfers.delete(message.transferId);
+
+                        // Notify complete
+                        if (this.onTransferComplete) {
+                            this.onTransferComplete({
+                                transferId: message.transferId,
+                                filename: transfer.filename,
+                                size: transfer.size,
+                                isRelay: true
+                            });
+                        }
+                    }
+                    break;
+                }
+
+                case 'relay-cancel': {
+                    // Cancel relay transfer
+                    this.relayIncoming.delete(message.transferId);
+                    this.activeTransfers.delete(message.transferId);
+                    break;
+                }
             }
         } catch (error) {
             this.handleError('Signaling message handling failed', error);
@@ -1100,14 +1210,30 @@ class TeleportWebRTC {
 
         if (accepted) {
             console.log('[FileTransfer] Transfer accepted, starting sendFiles...');
+
+            // Try WebRTC P2P first, fallback to relay if it fails
             this.sendFiles(fromPeerId, pending.files)
                 .then(() => {
-                    console.log('[FileTransfer] sendFiles completed successfully');
+                    console.log('[FileTransfer] sendFiles completed successfully via P2P');
                     pending.resolve();
                 })
-                .catch((err) => {
-                    console.error('[FileTransfer] sendFiles failed:', err);
-                    pending.reject(err);
+                .catch(async (err) => {
+                    console.warn('[FileTransfer] P2P sendFiles failed:', err.message);
+
+                    // Automatic relay fallback if enabled
+                    if (this.useRelayFallback) {
+                        console.log('[FileTransfer] Falling back to server relay...');
+                        try {
+                            await this.sendFilesViaRelay(fromPeerId, pending.files);
+                            console.log('[FileTransfer] Relay transfer completed successfully');
+                            pending.resolve();
+                        } catch (relayErr) {
+                            console.error('[FileTransfer] Relay also failed:', relayErr);
+                            pending.reject(relayErr);
+                        }
+                    } else {
+                        pending.reject(err);
+                    }
                 });
         } else {
             console.log('[FileTransfer] Transfer rejected by receiver');
@@ -1146,6 +1272,129 @@ class TeleportWebRTC {
             await this.sendFile(dc, files[i], i, totalFiles);
         }
         console.log('[FileTransfer] All files sent!');
+    }
+
+    // ============ SERVER RELAY TRANSFER ============
+    // Used when WebRTC P2P fails due to NAT/firewall
+
+    async sendFilesViaRelay(targetPeerId, files) {
+        console.log('[Relay] Sending', files.length, 'files via server relay');
+
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            throw new Error('WebSocket not connected');
+        }
+
+        for (let i = 0; i < files.length; i++) {
+            await this.sendFileViaRelay(targetPeerId, files[i], i, files.length);
+        }
+
+        console.log('[Relay] All files sent via relay!');
+    }
+
+    async sendFileViaRelay(targetPeerId, file, fileIndex = 0, totalFiles = 1) {
+        const transferId = crypto.randomUUID();
+        const startTime = Date.now();
+
+        console.log(`[Relay] Sending file: ${file.name} (${file.size} bytes)`);
+
+        // Track transfer
+        this.activeTransfers.set(transferId, {
+            paused: false,
+            cancelled: false,
+            startTime,
+            bytesTransferred: 0,
+            fileIndex,
+            totalFiles,
+            isRelay: true
+        });
+
+        // Send start message
+        this.ws.send(JSON.stringify({
+            type: 'relay-start',
+            to: targetPeerId,
+            transferId,
+            filename: file.name,
+            size: file.size,
+            mimeType: file.type || 'application/octet-stream',
+            fileIndex,
+            totalFiles
+        }));
+
+        // Smaller chunk size for relay (base64 adds ~33% overhead)
+        const RELAY_CHUNK_SIZE = 32 * 1024; // 32KB chunks
+        const reader = file.stream().getReader();
+        let offset = 0;
+
+        try {
+            while (true) {
+                const state = this.activeTransfers.get(transferId);
+                if (!state || state.cancelled) {
+                    this.ws.send(JSON.stringify({
+                        type: 'relay-cancel',
+                        to: targetPeerId,
+                        transferId
+                    }));
+                    throw new Error('Transfer cancelled');
+                }
+
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                // Process chunks from the stream
+                for (let i = 0; i < value.length; i += RELAY_CHUNK_SIZE) {
+                    const chunk = value.slice(i, i + RELAY_CHUNK_SIZE);
+
+                    // Convert to base64 for JSON transport
+                    const base64 = btoa(String.fromCharCode(...chunk));
+
+                    this.ws.send(JSON.stringify({
+                        type: 'relay-chunk',
+                        to: targetPeerId,
+                        transferId,
+                        data: base64,
+                        offset
+                    }));
+
+                    offset += chunk.length;
+
+                    // Update progress
+                    if (this.onTransferProgress) {
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        const speed = elapsed > 0 ? offset / elapsed : 0;
+
+                        this.onTransferProgress({
+                            transferId,
+                            filename: file.name,
+                            progress: Math.round((offset / file.size) * 100),
+                            sent: offset,
+                            total: file.size,
+                            speed: Math.round(speed),
+                            eta: speed > 0 ? Math.round((file.size - offset) / speed) : 0,
+                            isRelay: true
+                        });
+                    }
+
+                    // Small delay to not overwhelm WebSocket
+                    await new Promise(r => setTimeout(r, 5));
+                }
+            }
+
+            // Send end message
+            this.ws.send(JSON.stringify({
+                type: 'relay-end',
+                to: targetPeerId,
+                transferId
+            }));
+
+            console.log(`[Relay] File sent: ${file.name}`);
+
+            // Cleanup
+            this.activeTransfers.delete(transferId);
+
+        } catch (error) {
+            this.activeTransfers.delete(transferId);
+            throw error;
+        }
     }
 
     async sendFile(dc, file, fileIndex = 0, totalFiles = 1, retryCount = 0) {
