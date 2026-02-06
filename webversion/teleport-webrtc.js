@@ -500,24 +500,58 @@ class TeleportWebRTC {
         const pc = new RTCPeerConnection(this.rtcConfig);
         this.peers.set(targetPeerId, pc);
 
+        console.log('[WebRTC] Creating connection to peer:', targetPeerId);
+        console.log('[WebRTC] ICE servers configured:', this.rtcConfig.iceServers.length);
+
         const timeoutId = setTimeout(() => {
             if (pc.connectionState !== 'connected') {
+                console.error('[WebRTC] Connection timeout. States:', {
+                    connection: pc.connectionState,
+                    ice: pc.iceConnectionState,
+                    gathering: pc.iceGatheringState
+                });
                 this.handleConnectionFailure(targetPeerId, 'Connection timeout');
             }
         }, this.CONNECTION_TIMEOUT);
 
+        // Track ICE candidates for debugging
+        let candidateCount = { host: 0, srflx: 0, relay: 0, unknown: 0 };
+
         pc.onicecandidate = (event) => {
-            if (event.candidate && this.ws?.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({
-                    type: 'ice',
-                    to: targetPeerId,
-                    candidate: event.candidate
-                }));
+            if (event.candidate) {
+                const type = event.candidate.type || 'unknown';
+                candidateCount[type] = (candidateCount[type] || 0) + 1;
+                console.log(`[WebRTC] ICE candidate: ${type} (${event.candidate.protocol || 'unknown'})`);
+
+                if (this.ws?.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'ice',
+                        to: targetPeerId,
+                        candidate: event.candidate
+                    }));
+                }
+            } else {
+                console.log('[WebRTC] ICE gathering complete. Candidates:', candidateCount);
+            }
+        };
+
+        pc.onicegatheringstatechange = () => {
+            console.log('[WebRTC] ICE gathering state:', pc.iceGatheringState);
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('[WebRTC] ICE connection state:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'failed') {
+                console.error('[WebRTC] ICE connection failed! Candidates gathered:', candidateCount);
             }
         };
 
         pc.onconnectionstatechange = () => {
-            if (pc.connectionState === 'connected') clearTimeout(timeoutId);
+            console.log('[WebRTC] Connection state:', pc.connectionState);
+            if (pc.connectionState === 'connected') {
+                clearTimeout(timeoutId);
+                console.log('[WebRTC] ✅ Connected successfully!');
+            }
             if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
                 this.handleConnectionFailure(targetPeerId, 'Connection failed');
             }
@@ -528,6 +562,8 @@ class TeleportWebRTC {
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+
+        console.log('[WebRTC] Offer created, sending to peer...');
 
         this.ws.send(JSON.stringify({
             type: 'offer',
@@ -550,6 +586,8 @@ class TeleportWebRTC {
 
     async handleOffer(fromPeerId, sdp, fingerprint, publicKey) {
         try {
+            console.log('[WebRTC] Received offer from peer:', fromPeerId);
+
             if (this.onPeerVerification && fingerprint) {
                 this.onPeerVerification(fromPeerId, fingerprint);
             }
@@ -562,22 +600,47 @@ class TeleportWebRTC {
             const pc = new RTCPeerConnection(this.rtcConfig);
             this.peers.set(fromPeerId, pc);
 
+            // Track ICE candidates for debugging
+            let candidateCount = { host: 0, srflx: 0, relay: 0, unknown: 0 };
+
             pc.onicecandidate = (event) => {
-                if (event.candidate && this.ws?.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({
-                        type: 'ice',
-                        to: fromPeerId,
-                        candidate: event.candidate
-                    }));
+                if (event.candidate) {
+                    const type = event.candidate.type || 'unknown';
+                    candidateCount[type] = (candidateCount[type] || 0) + 1;
+                    console.log(`[WebRTC-Recv] ICE candidate: ${type} (${event.candidate.protocol || 'unknown'})`);
+
+                    if (this.ws?.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'ice',
+                            to: fromPeerId,
+                            candidate: event.candidate
+                        }));
+                    }
+                } else {
+                    console.log('[WebRTC-Recv] ICE gathering complete. Candidates:', candidateCount);
                 }
             };
 
+            pc.onicegatheringstatechange = () => {
+                console.log('[WebRTC-Recv] ICE gathering state:', pc.iceGatheringState);
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                console.log('[WebRTC-Recv] ICE connection state:', pc.iceConnectionState);
+            };
+
             pc.ondatachannel = (event) => {
+                console.log('[WebRTC-Recv] DataChannel received from peer!');
                 this.setupDataChannel(event.channel, fromPeerId);
             };
 
             pc.onconnectionstatechange = () => {
+                console.log('[WebRTC-Recv] Connection state:', pc.connectionState);
+                if (pc.connectionState === 'connected') {
+                    console.log('[WebRTC-Recv] ✅ Connected successfully!');
+                }
                 if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    console.error('[WebRTC-Recv] Connection failed! Candidates:', candidateCount);
                     this.handleConnectionFailure(fromPeerId, 'Connection lost');
                 }
             };
@@ -585,6 +648,8 @@ class TeleportWebRTC {
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+
+            console.log('[WebRTC-Recv] Answer created, sending to peer...');
 
             const ourPublicKey = await this.exportPublicKey();
             this.ws.send(JSON.stringify({
