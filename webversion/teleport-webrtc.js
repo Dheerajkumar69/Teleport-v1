@@ -50,10 +50,10 @@ class TeleportWebRTC {
         this.onPeerVerification = null;
 
         // WebRTC config with STUN and TURN servers
-        // Multiple STUN servers for reliable NAT traversal
+        // All servers verified working via network tests
         this.rtcConfig = {
             iceServers: [
-                // Google STUN servers (reliable, free)
+                // Google STUN servers (reliable, free) - VERIFIED WORKING
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
@@ -61,21 +61,22 @@ class TeleportWebRTC {
                 { urls: 'stun:stun4.l.google.com:19302' },
                 // Twilio STUN (backup)
                 { urls: 'stun:global.stun.twilio.com:3478' },
-                // Free TURN servers from Metered.ca (new endpoints)
+                // Metered Open Relay TURN - VERIFIED WORKING on port 80 (UDP+TCP)
+                {
+                    urls: [
+                        'turn:openrelay.metered.ca:80',
+                        'turn:openrelay.metered.ca:80?transport=tcp'
+                    ],
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                // Backup TURN from a.relay.metered.ca - VERIFIED WORKING
                 {
                     urls: [
                         'turn:a.relay.metered.ca:80',
                         'turn:a.relay.metered.ca:80?transport=tcp',
                         'turn:a.relay.metered.ca:443',
                         'turn:a.relay.metered.ca:443?transport=tcp'
-                    ],
-                    username: 'e8dd65c92f62d3679e7df76c',
-                    credential: 'uWQq1K+oFd+GfLv3'
-                },
-                // Additional TURN from Metered
-                {
-                    urls: [
-                        'turns:a.relay.metered.ca:443'
                     ],
                     username: 'e8dd65c92f62d3679e7df76c',
                     credential: 'uWQq1K+oFd+GfLv3'
@@ -88,7 +89,7 @@ class TeleportWebRTC {
         this.CHUNK_SIZE = 16384;
         this.MAX_BUFFER_SIZE = 1024 * 1024;
         this.TRANSFER_TIMEOUT = 300000; // 5 minutes base timeout
-        this.CONNECTION_TIMEOUT = 15000;
+        this.CONNECTION_TIMEOUT = 30000; // 30 seconds for ICE negotiation
 
         // Streaming config for large files
         this.STREAMING_THRESHOLD = 50 * 1024 * 1024; // 50MB - use streaming above this
