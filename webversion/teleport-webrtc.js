@@ -49,24 +49,40 @@ class TeleportWebRTC {
         this.onFileSizeWarning = null;
         this.onPeerVerification = null;
 
-        // WebRTC config with STUN and TURN
+        // WebRTC config with STUN and TURN servers
+        // Multiple STUN servers for reliable NAT traversal
         this.rtcConfig = {
             iceServers: [
+                // Google STUN servers (reliable, free)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                // Twilio STUN (backup)
+                { urls: 'stun:global.stun.twilio.com:3478' },
+                // Free TURN servers from Metered.ca (new endpoints)
                 {
-                    urls: 'turn:openrelay.metered.ca:80',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: [
+                        'turn:a.relay.metered.ca:80',
+                        'turn:a.relay.metered.ca:80?transport=tcp',
+                        'turn:a.relay.metered.ca:443',
+                        'turn:a.relay.metered.ca:443?transport=tcp'
+                    ],
+                    username: 'e8dd65c92f62d3679e7df76c',
+                    credential: 'uWQq1K+oFd+GfLv3'
                 },
+                // Additional TURN from Metered
                 {
-                    urls: 'turn:openrelay.metered.ca:443',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: [
+                        'turns:a.relay.metered.ca:443'
+                    ],
+                    username: 'e8dd65c92f62d3679e7df76c',
+                    credential: 'uWQq1K+oFd+GfLv3'
                 }
             ],
-            iceCandidatePoolSize: 10
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all' // Try all connection types
         };
 
         this.CHUNK_SIZE = 16384;
@@ -987,7 +1003,7 @@ class TeleportWebRTC {
         });
     }
 
-    waitForDataChannel(peerId, timeout = 30000) {
+    waitForDataChannel(peerId, timeout = 60000) {
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
             const check = () => {
