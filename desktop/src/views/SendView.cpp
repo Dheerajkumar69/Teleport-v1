@@ -4,6 +4,7 @@
  */
 
 #include "SendView.h"
+#include "Icons.h"
 #include "imgui.h"
 
 #ifdef _WIN32
@@ -13,6 +14,8 @@
 #else
 #include "platform/FileDialog_linux.h"
 #endif
+
+#include "platform/Sound.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,11 +32,11 @@ static const unsigned int CONFETTI_COLORS[] = {
     IM_COL32(74, 222, 128, 255),  // Bright green
 };
 
-// Text labels (fallback when icon fonts unavailable)
-static const char *ICON_UPLOAD = "^";
-static const char *ICON_FILE = "*";
-static const char *ICON_FOLDER = ">";
-static const char *ICON_CLOSE = "X";
+// Unicode icons for cross-platform display
+static const char *ICON_UPLOAD = Icons::ARROW_UP;
+static const char *ICON_FILE = Icons::FILE;
+static const char *ICON_FOLDER = Icons::FOLDER;
+static const char *ICON_CLOSE = Icons::CANCEL;
 
 SendView::SendView(TeleportBridge *bridge, Theme *theme)
     : bridge_(bridge), theme_(theme) {}
@@ -615,15 +618,7 @@ void SendView::RenderCelebration() {
   }
 }
 
-void SendView::PlaySuccessSound() {
-#ifdef _WIN32
-  // Play Windows system sound for success
-  MessageBeep(MB_OK);
-#else
-  // On Linux, we could use a sound library or just skip
-  // For now, do nothing
-#endif
-}
+void SendView::PlaySuccessSound() { ::teleport::ui::PlaySuccessSound(); }
 
 void SendView::RenderProgressBar() {
   auto transfers = bridge_->GetTransfers();

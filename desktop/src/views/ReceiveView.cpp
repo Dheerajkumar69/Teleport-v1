@@ -4,6 +4,7 @@
  */
 
 #include "ReceiveView.h"
+#include "Icons.h"
 #include "imgui.h"
 #include <teleport/teleport.h>
 
@@ -13,6 +14,8 @@
 #else
 #include "platform/FileDialog_linux.h"
 #endif
+
+#include "platform/Sound.h"
 
 #include <algorithm>
 #include <cmath>
@@ -32,10 +35,10 @@ static const unsigned int RECEIVE_CONFETTI_COLORS[] = {
     IM_COL32(16, 185, 129, 255),  // Success green
 };
 
-// Text labels (fallback when icon fonts unavailable)
-static const char *ICON_DOWNLOAD = "v";
-static const char *ICON_FOLDER = ">";
-static const char *ICON_CHECK = "+";
+// Unicode icons for cross-platform display
+static const char *ICON_DOWNLOAD = Icons::ARROW_DOWN;
+static const char *ICON_FOLDER = Icons::FOLDER;
+static const char *ICON_CHECK = Icons::CHECK;
 
 ReceiveView::ReceiveView(TeleportBridge *bridge, Theme *theme)
     : bridge_(bridge), theme_(theme) {
@@ -581,12 +584,6 @@ void ReceiveView::RenderCelebration() {
   }
 }
 
-void ReceiveView::PlaySuccessSound() {
-#ifdef _WIN32
-  MessageBeep(MB_OK);
-#else
-  // No-op on Linux
-#endif
-}
+void ReceiveView::PlaySuccessSound() { ::teleport::ui::PlaySuccessSound(); }
 
 } // namespace teleport::ui

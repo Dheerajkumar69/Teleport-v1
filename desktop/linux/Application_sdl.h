@@ -9,7 +9,6 @@
 #include <memory>
 #include <string>
 
-#include "Config.h"
 #include "TeleportBridge.h"
 #include "Theme.h"
 #include "views/DiscoverView.h"
@@ -63,7 +62,6 @@ private:
   // Application state
   std::unique_ptr<TeleportBridge> bridge_;
   std::unique_ptr<Theme> theme_;
-  std::unique_ptr<Config> config_;
 
   // Views - All 5 tabs
   std::unique_ptr<DiscoverView> discoverView_;

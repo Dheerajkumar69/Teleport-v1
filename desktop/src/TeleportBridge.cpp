@@ -108,12 +108,21 @@ bool TeleportBridge::Initialize() {
     return false;
   }
 
-  // Auto-connect to web signaling server for web ↔ desktop transfers
-  // Try local server first (for development), then production
-  if (!ConnectToWebSignaling("ws://localhost:3000")) {
-    // Local server not available, will try reconnecting later
-    // Production WSS requires SSL support which is not yet implemented
+  // Set device name from hostname if not already set
+  if (deviceName_.empty()) {
+    char hostname[256] = {0};
+#ifdef _WIN32
+    DWORD size = sizeof(hostname);
+    GetComputerNameA(hostname, &size);
+#else
+    gethostname(hostname, sizeof(hostname) - 1);
+#endif
+    deviceName_ = hostname[0] ? hostname : "Desktop";
   }
+
+  // Note: Signaling server connection is handled in Update() to avoid
+  // thread crashes during initialization. First connection attempt
+  // happens immediately on first Update() call.
 
   return true;
 }
@@ -121,6 +130,9 @@ bool TeleportBridge::Initialize() {
 void TeleportBridge::Shutdown() {
   // Signal all threads to stop
   shuttingDown_.store(true);
+
+  // Disconnect web signaling first (graceful close before engine destruction)
+  DisconnectFromWebSignaling();
 
   StopDiscovery();
   StopReceiving();
@@ -196,6 +208,24 @@ void TeleportBridge::Update() {
       // Smooth animation
       transfer.progress +=
           (targetProgress - transfer.progress) * deltaTime * 8.0f;
+    }
+  }
+
+  // Auto-reconnect to signaling server if disconnected
+  // Initialize to epoch so first attempt happens immediately
+  static auto lastReconnectAttempt = std::chrono::steady_clock::time_point{};
+  static bool firstAttempt = true;
+  if (!webSignalingConnected_.load() && !shuttingDown_.load()) {
+    auto timeSinceLastAttempt =
+        std::chrono::steady_clock::now() - lastReconnectAttempt;
+    // First attempt immediate, then retry every 30 seconds
+    if (firstAttempt || timeSinceLastAttempt > std::chrono::seconds(30)) {
+      firstAttempt = false;
+      lastReconnectAttempt = std::chrono::steady_clock::now();
+      // Try local first, then production (TLS now supported)
+      if (!ConnectToWebSignaling("ws://localhost:3000")) {
+        ConnectToWebSignaling("wss://teleport-signaling.onrender.com");
+      }
     }
   }
 }
@@ -438,20 +468,85 @@ std::vector<TransferInfo> TeleportBridge::GetTransfers() const {
 }
 
 void TeleportBridge::PauseTransfer(const std::string &transferId) {
-  if (currentTransfer_) {
-    teleport_transfer_pause(currentTransfer_);
+  if (transferId.empty())
+    return;
+
+  TeleportTransfer *transfer = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(activeTransfersMutex_);
+    auto it = activeTransfers_.find(transferId);
+    if (it != activeTransfers_.end()) {
+      transfer = it->second;
+    }
+  }
+
+  if (transfer) {
+    teleport_transfer_pause(transfer);
+
+    // Update state in transfers list
+    std::lock_guard<std::mutex> lock(transfersMutex_);
+    for (auto &t : transfers_) {
+      if (t.id == transferId) {
+        t.state = TELEPORT_STATE_PAUSED;
+        break;
+      }
+    }
   }
 }
 
 void TeleportBridge::ResumeTransfer(const std::string &transferId) {
-  if (currentTransfer_) {
-    teleport_transfer_resume(currentTransfer_);
+  if (transferId.empty())
+    return;
+
+  TeleportTransfer *transfer = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(activeTransfersMutex_);
+    auto it = activeTransfers_.find(transferId);
+    if (it != activeTransfers_.end()) {
+      transfer = it->second;
+    }
+  }
+
+  if (transfer) {
+    teleport_transfer_resume(transfer);
+
+    // Update state in transfers list
+    std::lock_guard<std::mutex> lock(transfersMutex_);
+    for (auto &t : transfers_) {
+      if (t.id == transferId) {
+        t.state = TELEPORT_STATE_TRANSFERRING;
+        break;
+      }
+    }
   }
 }
 
 void TeleportBridge::CancelTransfer(const std::string &transferId) {
-  if (currentTransfer_) {
-    teleport_transfer_cancel(currentTransfer_);
+  if (transferId.empty())
+    return;
+
+  TeleportTransfer *transfer = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(activeTransfersMutex_);
+    auto it = activeTransfers_.find(transferId);
+    if (it != activeTransfers_.end()) {
+      transfer = it->second;
+      // Remove from map after getting pointer
+      activeTransfers_.erase(it);
+    }
+  }
+
+  if (transfer) {
+    teleport_transfer_cancel(transfer);
+
+    // Update state in transfers list
+    std::lock_guard<std::mutex> lock(transfersMutex_);
+    for (auto &t : transfers_) {
+      if (t.id == transferId) {
+        t.state = TELEPORT_STATE_CANCELLED;
+        break;
+      }
+    }
   }
 }
 
@@ -473,6 +568,11 @@ void TeleportBridge::RejectPendingRequest() {
 // ============ Callbacks ============
 
 void TeleportBridge::OnDeviceDiscovered(const TeleportDevice *device) {
+  // Null guard - critical for bulletproof operation
+  if (!device) {
+    return;
+  }
+
   std::lock_guard<std::mutex> lock(devicesMutex_);
 
   // Check if device already exists
@@ -501,6 +601,11 @@ void TeleportBridge::OnDeviceDiscovered(const TeleportDevice *device) {
 }
 
 void TeleportBridge::OnDeviceLost(const char *deviceId) {
+  // Null guard
+  if (!deviceId) {
+    return;
+  }
+
   std::lock_guard<std::mutex> lock(devicesMutex_);
 
   devices_.erase(std::remove_if(devices_.begin(), devices_.end(),
@@ -511,6 +616,11 @@ void TeleportBridge::OnDeviceLost(const char *deviceId) {
 }
 
 void TeleportBridge::OnProgress(const TeleportProgress *progress) {
+  // Null guard
+  if (!progress) {
+    return;
+  }
+
   std::lock_guard<std::mutex> lock(transfersMutex_);
 
   if (!transfers_.empty()) {
@@ -535,12 +645,15 @@ void TeleportBridge::OnComplete(TeleportError error) {
                                             : TELEPORT_STATE_FAILED;
     transfer.progress = (error == TELEPORT_OK) ? 1.0f : transfer.progress;
   }
-
-  currentTransfer_ = nullptr;
 }
 
 int TeleportBridge::OnIncoming(const TeleportDevice *sender,
                                const TeleportFileInfo *files, size_t count) {
+  // Null guards - reject if invalid
+  if (!sender || !files || count == 0) {
+    return 0; // Reject invalid request
+  }
+
   // Store request info
   {
     std::lock_guard<std::mutex> lock(requestMutex_);
@@ -560,12 +673,18 @@ int TeleportBridge::OnIncoming(const TeleportDevice *sender,
   hasPendingRequest_.store(true);
   pendingRequestResponse_.store(-1);
 
-  // Wait for user response (with timeout)
+  // Wait for user response (with timeout and shutdown check)
   auto start = std::chrono::steady_clock::now();
   while (pendingRequestResponse_.load() == -1) {
+    // Check for shutdown to prevent deadlock
+    if (shuttingDown_.load()) {
+      hasPendingRequest_.store(false);
+      return 0; // Reject on shutdown
+    }
     Sleep(100);
     auto elapsed = std::chrono::steady_clock::now() - start;
     if (elapsed > std::chrono::seconds(30)) {
+      hasPendingRequest_.store(false);
       return 0; // Timeout - reject
     }
   }

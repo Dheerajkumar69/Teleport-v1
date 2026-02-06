@@ -361,12 +361,22 @@ int WebSignalingClient::recvWithTimeout(int socket, void *buffer, size_t size,
   int result = select(socket + 1, &readSet, nullptr, nullptr, &tv);
   if (result <= 0)
     return result;
-  return recv(socket, (char *)buffer, (int)size, 0);
 #else
   struct pollfd pfd = {socket, POLLIN, 0};
   int result = poll(&pfd, 1, timeoutMs);
   if (result <= 0)
     return result;
+#endif
+
+#ifdef USE_OPENSSL
+  if (m_ssl) {
+    return SSL_read(static_cast<SSL *>(m_ssl), buffer, static_cast<int>(size));
+  }
+#endif
+
+#ifdef _WIN32
+  return recv(socket, (char *)buffer, (int)size, 0);
+#else
   return recv(socket, buffer, size, 0);
 #endif
 }
@@ -381,12 +391,22 @@ int WebSignalingClient::sendWithTimeout(int socket, const void *buffer,
   int result = select(socket + 1, nullptr, &writeSet, nullptr, &tv);
   if (result <= 0)
     return result;
-  return send(socket, (const char *)buffer, (int)size, 0);
 #else
   struct pollfd pfd = {socket, POLLOUT, 0};
   int result = poll(&pfd, 1, timeoutMs);
   if (result <= 0)
     return result;
+#endif
+
+#ifdef USE_OPENSSL
+  if (m_ssl) {
+    return SSL_write(static_cast<SSL *>(m_ssl), buffer, static_cast<int>(size));
+  }
+#endif
+
+#ifdef _WIN32
+  return send(socket, (const char *)buffer, (int)size, 0);
+#else
   return send(socket, buffer, size, 0);
 #endif
 }
@@ -517,6 +537,65 @@ bool WebSignalingClient::connectInternal() {
   }
   freeaddrinfo(result);
 
+#ifdef USE_OPENSSL
+  // Initialize TLS for wss:// connections
+  if (useTLS) {
+    // Initialize OpenSSL (only once)
+    static bool sslInitialized = false;
+    if (!sslInitialized) {
+      SSL_library_init();
+      SSL_load_error_strings();
+      OpenSSL_add_all_algorithms();
+      sslInitialized = true;
+    }
+
+    // Create SSL context
+    const SSL_METHOD *method = TLS_client_method();
+    m_sslContext = SSL_CTX_new(method);
+    if (!m_sslContext) {
+      CLOSE_SOCKET(m_socket);
+      m_socket = -1;
+      m_state = ConnectionState::Failed;
+      if (m_onError)
+        m_onError(SignalingError::ConnectionFailed,
+                  "SSL context creation failed");
+      return false;
+    }
+
+    // Create SSL connection
+    m_ssl = SSL_new(static_cast<SSL_CTX *>(m_sslContext));
+    if (!m_ssl) {
+      SSL_CTX_free(static_cast<SSL_CTX *>(m_sslContext));
+      m_sslContext = nullptr;
+      CLOSE_SOCKET(m_socket);
+      m_socket = -1;
+      m_state = ConnectionState::Failed;
+      if (m_onError)
+        m_onError(SignalingError::ConnectionFailed, "SSL creation failed");
+      return false;
+    }
+
+    // Set hostname for SNI (Server Name Indication)
+    SSL_set_tlsext_host_name(static_cast<SSL *>(m_ssl), host.c_str());
+    SSL_set_fd(static_cast<SSL *>(m_ssl), m_socket);
+
+    // Perform TLS handshake
+    if (SSL_connect(static_cast<SSL *>(m_ssl)) <= 0) {
+      SSL_free(static_cast<SSL *>(m_ssl));
+      SSL_CTX_free(static_cast<SSL_CTX *>(m_sslContext));
+      m_ssl = nullptr;
+      m_sslContext = nullptr;
+      CLOSE_SOCKET(m_socket);
+      m_socket = -1;
+      m_state = ConnectionState::Failed;
+      if (m_onError)
+        m_onError(SignalingError::ConnectionFailed, "TLS handshake failed");
+      return false;
+    }
+    m_useTLS = true;
+  }
+#endif
+
   // Generate WebSocket key
   uint8_t keyBytes[16];
   std::random_device rd;
@@ -598,6 +677,20 @@ void WebSignalingClient::disconnect() {
   m_stopRequested = true;
   m_running = false;
   m_autoReconnect = false; // Disable reconnect on explicit disconnect
+
+#ifdef USE_OPENSSL
+  // Clean up SSL before closing socket
+  if (m_ssl) {
+    SSL_shutdown(static_cast<SSL *>(m_ssl));
+    SSL_free(static_cast<SSL *>(m_ssl));
+    m_ssl = nullptr;
+  }
+  if (m_sslContext) {
+    SSL_CTX_free(static_cast<SSL_CTX *>(m_sslContext));
+    m_sslContext = nullptr;
+  }
+  m_useTLS = false;
+#endif
 
   if (m_socket != -1) {
     // Send close frame

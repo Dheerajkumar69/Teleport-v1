@@ -8,17 +8,27 @@
 #include <cmath>
 #include <cstdio>
 
-// Font Awesome 6 Free - Regular subset embedded
-// This is a minimal subset for icons used in the app
-static const unsigned int FA_ICONS_DATA[] = {
-    // Placeholder - actual font would be loaded from file or embedded
-    0};
-
 namespace teleport::ui {
 
 Theme::Theme() { InitColors(); }
 
 void Theme::InitColors() {
+  if (isDarkMode_) {
+    InitDarkColors();
+  } else {
+    InitLightColors();
+  }
+}
+
+void Theme::SetDarkMode(bool dark) {
+  if (isDarkMode_ != dark) {
+    isDarkMode_ = dark;
+    InitColors();
+    Apply();
+  }
+}
+
+void Theme::InitDarkColors() {
   // Brand - Vibrant purple gradient
   colors_[ThemeColor::Primary] =
       ImVec4(0.486f, 0.228f, 0.929f, 1.0f); // #7C3AED
@@ -66,6 +76,55 @@ void Theme::InitColors() {
       ImVec4(0.486f, 0.228f, 0.929f, 0.4f); // Primary with alpha
   colors_[ThemeColor::Border] =
       ImVec4(0.200f, 0.200f, 0.220f, 0.5f); // Subtle border
+}
+
+void Theme::InitLightColors() {
+  // Brand - Same vibrant purple
+  colors_[ThemeColor::Primary] =
+      ImVec4(0.486f, 0.228f, 0.929f, 1.0f); // #7C3AED
+  colors_[ThemeColor::PrimaryLight] =
+      ImVec4(0.655f, 0.545f, 0.980f, 1.0f); // #A78BFA
+  colors_[ThemeColor::PrimaryDark] =
+      ImVec4(0.365f, 0.173f, 0.698f, 1.0f); // #5D2CB2
+  colors_[ThemeColor::Accent] =
+      ImVec4(0.059f, 0.647f, 0.788f, 1.0f); // Darker cyan for contrast
+
+  // Surfaces - Light backgrounds
+  colors_[ThemeColor::Background] =
+      ImVec4(0.973f, 0.973f, 0.980f, 1.0f); // Near white #F8F8FA
+  colors_[ThemeColor::Surface] = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // Pure white
+  colors_[ThemeColor::SurfaceLight] =
+      ImVec4(0.945f, 0.945f, 0.957f, 1.0f); // #F1F1F4
+  colors_[ThemeColor::SidebarTop] =
+      ImVec4(0.973f, 0.973f, 0.980f, 1.0f); // Light gradient
+  colors_[ThemeColor::SidebarBottom] = ImVec4(0.957f, 0.957f, 0.969f, 1.0f);
+  colors_[ThemeColor::Card] = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // White card
+  colors_[ThemeColor::CardHover] =
+      ImVec4(0.969f, 0.969f, 0.980f, 1.0f); // Slightly gray on hover
+
+  // Text - Dark text on light background
+  colors_[ThemeColor::TextPrimary] =
+      ImVec4(0.118f, 0.118f, 0.145f, 1.0f); // #1E1E25 - near black
+  colors_[ThemeColor::TextSecondary] =
+      ImVec4(0.427f, 0.427f, 0.471f, 1.0f); // #6D6D78
+  colors_[ThemeColor::TextDisabled] =
+      ImVec4(0.620f, 0.620f, 0.655f, 1.0f); // #9E9EA7
+
+  // States - Same colors work on light
+  colors_[ThemeColor::Success] =
+      ImVec4(0.063f, 0.625f, 0.406f, 1.0f); // Slightly darker green
+  colors_[ThemeColor::Warning] =
+      ImVec4(0.861f, 0.520f, 0.043f, 1.0f); // Slightly darker orange
+  colors_[ThemeColor::Error] =
+      ImVec4(0.837f, 0.167f, 0.167f, 1.0f); // Slightly darker red
+  colors_[ThemeColor::Info] =
+      ImVec4(0.131f, 0.410f, 0.865f, 1.0f); // Slightly darker blue
+
+  // Special
+  colors_[ThemeColor::Glow] =
+      ImVec4(0.486f, 0.228f, 0.929f, 0.25f); // Lighter glow for light mode
+  colors_[ThemeColor::Border] =
+      ImVec4(0.820f, 0.820f, 0.850f, 0.8f); // Visible light border
 }
 
 void Theme::Apply() {

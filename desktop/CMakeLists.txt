@@ -21,6 +21,7 @@ set(IMGUI_CORE_SOURCES
 set(DESKTOP_COMMON_SOURCES
     src/TeleportBridge.cpp
     src/Theme.cpp
+    src/Config.cpp
     src/views/DiscoverView.cpp
     src/views/SendView.cpp
     src/views/ReceiveView.cpp
@@ -35,6 +36,9 @@ set(DESKTOP_COMMON_SOURCES
 set(DESKTOP_COMMON_HEADERS
     src/TeleportBridge.h
     src/Theme.h
+    src/Config.h
+    src/Icons.h
+    src/platform/Sound.h
     src/views/DiscoverView.h
     src/views/SendView.h
     src/views/ReceiveView.h
@@ -58,6 +62,7 @@ if(WIN32)
     set(DESKTOP_WIN_SOURCES
         src/main.cpp
         src/Application.cpp
+        src/platform/Sound_win32.cpp
     )
 
     set(DESKTOP_WIN_HEADERS
@@ -121,6 +126,7 @@ elseif(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SDL2 REQUIRED sdl2)
     find_package(OpenGL REQUIRED)
+    find_package(OpenSSL REQUIRED)
 
     set(IMGUI_SDL_GL_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
@@ -131,6 +137,7 @@ elseif(UNIX AND NOT APPLE)
         src/main_linux.cpp
         src/Application_sdl.cpp
         src/platform/FileDialog_linux.cpp
+        src/platform/Sound_linux.cpp
         src/WebSignalingClient.cpp
     )
 
@@ -161,11 +168,14 @@ elseif(UNIX AND NOT APPLE)
         teleport_core
         ${SDL2_LIBRARIES}
         OpenGL::GL
+        OpenSSL::SSL
+        OpenSSL::Crypto
         ${CMAKE_DL_LIBS}
     )
 
     target_compile_definitions(TeleportUI PRIVATE
         TELEPORT_LINUX
+        USE_OPENSSL
     )
 
     set_target_properties(TeleportUI PROPERTIES
@@ -182,8 +192,78 @@ elseif(UNIX AND NOT APPLE)
     endif()
 
 # ============================================================================
-# macOS BUILD (placeholder for future)
+# macOS BUILD (SDL2 + OpenGL3 - same as Linux)
 # ============================================================================
 elseif(APPLE)
-    message(STATUS "macOS desktop build not yet implemented")
+    # Find required packages
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2 REQUIRED sdl2)
+    find_package(OpenGL REQUIRED)
+
+    set(IMGUI_SDL_GL_SOURCES
+        ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+
+    set(DESKTOP_MACOS_SOURCES
+        src/main_macos.cpp
+        src/Application_sdl.cpp
+        src/platform/FileDialog_macos.cpp
+        src/platform/Sound_macos.cpp
+        src/WebSignalingClient.cpp
+    )
+
+    set(DESKTOP_MACOS_HEADERS
+        src/Application_sdl.h
+        src/platform/FileDialog_macos.h
+        src/WebSignalingClient.h
+    )
+
+    add_executable(TeleportUI MACOSX_BUNDLE
+        ${DESKTOP_MACOS_SOURCES}
+        ${DESKTOP_MACOS_HEADERS}
+        ${DESKTOP_COMMON_SOURCES}
+        ${DESKTOP_COMMON_HEADERS}
+        ${IMGUI_CORE_SOURCES}
+        ${IMGUI_SDL_GL_SOURCES}
+    )
+
+    target_include_directories(TeleportUI PRIVATE
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${SDL2_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(TeleportUI PRIVATE
+        teleport_core
+        ${SDL2_LIBRARIES}
+        OpenGL::GL
+        "-framework Cocoa"
+        "-framework IOKit"
+        "-framework CoreVideo"
+        ${CMAKE_DL_LIBS}
+    )
+
+    target_compile_definitions(TeleportUI PRIVATE
+        TELEPORT_MACOS
+    )
+
+    set_target_properties(TeleportUI PROPERTIES
+        OUTPUT_NAME "Teleport"
+        MACOSX_BUNDLE_BUNDLE_NAME "Teleport"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.teleport.desktop"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0.0"
+    )
+
+    # Copy fonts to app bundle
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts)
+        add_custom_command(TARGET TeleportUI POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts
+            $<TARGET_FILE_DIR:TeleportUI>/../Resources/fonts
+        )
+    endif()
 endif()

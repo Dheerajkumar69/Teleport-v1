@@ -4,6 +4,7 @@
  */
 
 #include "TransfersView.h"
+#include "Icons.h"
 #include "imgui.h"
 #include <cmath>
 #include <string>
@@ -11,14 +12,14 @@
 
 namespace teleport::ui {
 
-// Text labels (fallback when icon fonts unavailable)
-static const char *ICON_UPLOAD = "^";   // Upload
-static const char *ICON_DOWNLOAD = "v"; // Download
-static const char *ICON_PAUSE = "||";   // Pause
-static const char *ICON_PLAY = ">";     // Play/Resume
-static const char *ICON_CANCEL = "X";   // Cancel
-static const char *ICON_CHECK = "+";    // Checkmark
-static const char *ICON_ERROR = "!";    // Error
+// Unicode icons for cross-platform display
+static const char *ICON_UPLOAD = Icons::ARROW_UP;
+static const char *ICON_DOWNLOAD = Icons::ARROW_DOWN;
+static const char *ICON_PAUSE = Icons::PAUSE;
+static const char *ICON_PLAY = Icons::PLAY;
+static const char *ICON_CANCEL = Icons::CANCEL;
+static const char *ICON_CHECK = Icons::CHECK;
+static const char *ICON_ERROR = Icons::ERROR;
 
 TransfersView::TransfersView(TeleportBridge *bridge, Theme *theme)
     : bridge_(bridge), theme_(theme) {}

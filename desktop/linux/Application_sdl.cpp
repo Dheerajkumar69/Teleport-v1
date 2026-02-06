@@ -54,13 +54,8 @@ bool Application::Initialize() {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.IniFilename = nullptr; // Disable imgui.ini
 
-  // Initialize config (load saved settings)
-  config_ = std::make_unique<Config>();
-  config_->Load();
-
   // Initialize theme and load fonts
   theme_ = std::make_unique<Theme>();
-  theme_->SetDarkMode(config_->GetDarkMode()); // Apply saved dark mode
   theme_->Apply();
   theme_->LoadFonts(io);
 
@@ -70,20 +65,14 @@ bool Application::Initialize() {
 
   // Initialize Teleport bridge
   bridge_ = std::make_unique<TeleportBridge>();
-  if (!bridge_->Initialize()) {
-    fprintf(stderr, "Warning: TeleportBridge initialization failed. Some "
-                    "features may not work.\n");
-    // Continue anyway - core UI will still function
-  }
-  bridge_->SetDownloadPath(config_->GetDownloadPath());
+  bridge_->Initialize();
 
   // Initialize all 5 views
   discoverView_ = std::make_unique<DiscoverView>(bridge_.get(), theme_.get());
   sendView_ = std::make_unique<SendView>(bridge_.get(), theme_.get());
   receiveView_ = std::make_unique<ReceiveView>(bridge_.get(), theme_.get());
   transfersView_ = std::make_unique<TransfersView>(bridge_.get(), theme_.get());
-  settingsView_ = std::make_unique<SettingsView>(bridge_.get(), theme_.get(),
-                                                 config_.get());
+  settingsView_ = std::make_unique<SettingsView>(bridge_.get(), theme_.get());
 
   // Enable drag and drop
   SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
@@ -402,6 +391,22 @@ void Application::RenderMainContent() {
   ImGui::PopStyleVar();
 
   ImGui::EndChild();
+}
+
+void Application::RenderSettingsPlaceholder() {
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(30, 20));
+
+  ImGui::PushFont(theme_->GetHeadingFont());
+  ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "Settings");
+  ImGui::PopFont();
+
+  ImGui::Spacing();
+  ImGui::Spacing();
+
+  ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary),
+                     "Coming soon...");
+
+  ImGui::PopStyleVar();
 }
 
 void Application::RenderGlobalIncomingDialog() {

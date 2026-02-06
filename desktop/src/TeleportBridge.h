@@ -12,6 +12,7 @@
 #include <string>
 #include <teleport/teleport.h>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 // Forward declare WebSignalingClient
@@ -276,7 +277,10 @@ public:
 
 private:
   TeleportEngine *engine_ = nullptr;
-  TeleportTransfer *currentTransfer_ = nullptr;
+
+  // Multi-transfer tracking: map from transferId to TeleportTransfer*
+  mutable std::mutex activeTransfersMutex_;
+  std::unordered_map<std::string, TeleportTransfer *> activeTransfers_;
 
   std::atomic<bool> isDiscovering_{false};
   std::atomic<bool> isReceiving_{false};

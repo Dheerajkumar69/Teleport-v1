@@ -19,19 +19,9 @@
 
 namespace teleport::ui {
 
-SettingsView::SettingsView(TeleportBridge *bridge, Theme *theme)
-    : bridge_(bridge), theme_(theme) {
-  downloadPath_ = bridge_->GetDownloadPath();
-
-#ifdef _WIN32
-  // Get computer name as default device name
-  DWORD size = sizeof(deviceName_);
-  GetComputerNameA(deviceName_, &size);
-#else
-  // Get hostname on Linux
-  gethostname(deviceName_, sizeof(deviceName_));
-#endif
-
+SettingsView::SettingsView(TeleportBridge *bridge, Theme *theme, Config *config)
+    : bridge_(bridge), theme_(theme), config_(config) {
+  // Load settings from persistent config
   LoadSettings();
 }
 
@@ -272,7 +262,8 @@ void SettingsView::RenderAppearanceSettings() {
   if (ImGui::InvisibleButton("##DarkModeToggle",
                              ImVec2(switchWidth, switchHeight))) {
     darkMode_ = !darkMode_;
-    // TODO: Apply theme change
+    // Apply theme change immediately
+    theme_->SetDarkMode(darkMode_);
     SaveSettings();
   }
 
@@ -311,13 +302,56 @@ void SettingsView::RenderAbout() {
 }
 
 void SettingsView::SaveSettings() {
-  // TODO: Save to config file
-  // For now, settings are session-only
+  if (!config_)
+    return;
+
+  config_->SetDeviceName(deviceName_);
+  config_->SetDownloadPath(downloadPath_);
+  config_->SetDarkMode(darkMode_);
+  config_->SetShowNotifications(showNotifications_);
+  config_->SetAutoStart(autoStart_);
 }
 
 void SettingsView::LoadSettings() {
-  // TODO: Load from config file
-  // For now, use defaults
+  // Safe default for device name
+  deviceName_[0] = '\0';
+
+  if (!bridge_) {
+    downloadPath_ = "";
+  } else {
+    downloadPath_ = bridge_->GetDownloadPath();
+  }
+
+  if (!config_) {
+    // No config - use defaults already set
+    return;
+  }
+
+  // Load from persistent config with bounds checking
+  const std::string &name = config_->GetDeviceName();
+  if (!name.empty()) {
+    strncpy(deviceName_, name.c_str(), sizeof(deviceName_) - 1);
+    deviceName_[sizeof(deviceName_) - 1] = '\0';
+  }
+
+  const std::string &path = config_->GetDownloadPath();
+  if (!path.empty()) {
+    downloadPath_ = path;
+  }
+
+  darkMode_ = config_->GetDarkMode();
+  showNotifications_ = config_->GetShowNotifications();
+  autoStart_ = config_->GetAutoStart();
+
+  // Apply dark mode from config (null-safe)
+  if (theme_) {
+    theme_->SetDarkMode(darkMode_);
+  }
+
+  // Sync download path with bridge (null-safe)
+  if (bridge_ && !downloadPath_.empty()) {
+    bridge_->SetDownloadPath(downloadPath_);
+  }
 }
 
 } // namespace teleport::ui
