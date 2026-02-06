@@ -697,8 +697,12 @@ bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
 
   webSignaling_->setOnTransferComplete(
       [this](const std::string &transferId, const std::string &filename,
-             const std::vector<uint8_t> &data) {
-        // Save received file
+             const std::vector<uint8_t> &data, bool verified) {
+        // Save received file only if integrity verified
+        if (!verified) {
+          // File failed integrity check - log or notify user
+          return;
+        }
         std::string outputPath = downloadPath_ + "/" + filename;
         std::ofstream file(outputPath, std::ios::binary);
         if (file) {
