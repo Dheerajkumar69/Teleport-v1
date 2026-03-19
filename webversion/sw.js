@@ -3,11 +3,12 @@
  * Caches app shell for offline functionality
  */
 
-const CACHE_NAME = 'teleport-v3';
+const CACHE_NAME = 'teleport-v4'; // Bumped: TURN fix, sanitizer, resume, peer-joined tracking
 const STATIC_ASSETS = [
     '/app.html',
     '/teleport-webrtc.js',
     '/app-lovable.js',
+    '/streamsaver.min.js',
     '/assets/favicon.svg'
 ];
 

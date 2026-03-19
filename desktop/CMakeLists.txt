@@ -199,6 +199,7 @@ elseif(APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SDL2 REQUIRED sdl2)
     find_package(OpenGL REQUIRED)
+    find_package(OpenSSL REQUIRED)
 
     set(IMGUI_SDL_GL_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
@@ -240,6 +241,8 @@ elseif(APPLE)
         teleport_core
         ${SDL2_LIBRARIES}
         OpenGL::GL
+        OpenSSL::SSL
+        OpenSSL::Crypto
         "-framework Cocoa"
         "-framework IOKit"
         "-framework CoreVideo"
@@ -248,6 +251,7 @@ elseif(APPLE)
 
     target_compile_definitions(TeleportUI PRIVATE
         TELEPORT_MACOS
+        USE_OPENSSL
     )
 
     set_target_properties(TeleportUI PROPERTIES

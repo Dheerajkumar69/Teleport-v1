@@ -120,9 +120,11 @@ bool TeleportBridge::Initialize() {
     deviceName_ = hostname[0] ? hostname : "Desktop";
   }
 
-  // Note: Signaling server connection is handled in Update() to avoid
-  // thread crashes during initialization. First connection attempt
-  // happens immediately on first Update() call.
+  // Connect to signaling server (sync for stability)
+  // Try local first, then production
+  if (!ConnectToWebSignaling("ws://localhost:3000")) {
+    ConnectToWebSignaling("wss://teleport-signaling.onrender.com");
+  }
 
   return true;
 }

@@ -915,10 +915,11 @@ class TeleportWebRTC {
         }
     }
 
-    async sendFile(dc, file, fileIndex = 0, totalFiles = 1, retryCount = 0) {
+    async sendFile(dc, file, fileIndex = 0, totalFiles = 1) {
         const transferId = crypto.randomUUID();
         const startTime = Date.now();
         const relativePath = file.relativePath || file.webkitRelativePath || '';
+        let fileSent = false;
 
         this.activeTransfers.set(transferId, {
             paused: false,
@@ -995,6 +996,7 @@ class TeleportWebRTC {
             }
 
             dc.send(JSON.stringify({ type: 'file-end', transferId }));
+            fileSent = true;
 
             this.saveTransferToHistory({
                 filename: file.name,
@@ -1018,16 +1020,16 @@ class TeleportWebRTC {
             this.activeTransfers.delete(transferId);
 
         } catch (error) {
-            if (retryCount < 3) {
-                await new Promise(r => setTimeout(r, 1000));
-                return this.sendFile(dc, file, fileIndex, totalFiles, retryCount + 1);
-            }
-
             this.activeTransfers.delete(transferId);
-            if (this.onTransferError) {
-                this.onTransferError({ transferId, filename: file.name, error: error.message });
+
+            // Only report/throw error if the file was not actually sent.
+            // Errors after file-end (e.g. in callbacks) should not cause re-transfers.
+            if (!fileSent) {
+                if (this.onTransferError) {
+                    this.onTransferError({ transferId, filename: file.name, error: error.message });
+                }
+                throw error;
             }
-            throw error;
         }
     }
 

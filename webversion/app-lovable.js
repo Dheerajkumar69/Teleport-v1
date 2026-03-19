@@ -304,6 +304,7 @@
                 <div class="device-info">
                     <span class="device-status"></span>
                     Online
+                    ${peer.isLan ? '<span class="lan-badge" title="On your local network">📡 LAN</span>' : ''}
                 </div>
                 ${peer.fingerprint ? `<div class="device-fingerprint">🔐 ${peer.fingerprint}</div>` : ''}
             </div>
@@ -867,14 +868,26 @@
     };
 
     teleport.onPeersUpdated = (newPeers) => {
-        const newCount = newPeers.length - peers.length;
+        const prevCount = peers.length;
         peers = newPeers;
         renderDevices();
         updateRecipientSelect();
-        if (newCount > 0) {
-            showToast(`${newCount} new device(s) found!`, 'success');
+        const diff = newPeers.length - prevCount;
+        if (diff > 0) {
+            showToast(`${diff} new device(s) found!`, 'success');
         }
     };
+
+    // When a peer announces it's on the local LAN, re-render with the LAN badge
+    if (teleport.broadcastChannel) {
+        const _origBC = teleport.broadcastChannel.onmessage;
+        teleport.broadcastChannel.onmessage = (event) => {
+            if (_origBC) _origBC(event);
+            if (event.data?.type === 'peer-lan-updated') {
+                renderDevices(); // re-render so LAN badge appears
+            }
+        };
+    }
 
     teleport.onFileRequest = (request) => {
         if (isReceiving) {
@@ -1071,6 +1084,9 @@
         /* Encryption badge */
         .encryption-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; background: rgba(239, 68, 68, 0.15); color: #EF4444; }
         .encryption-badge.encrypted { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+
+        /* LAN peer badge */
+        .lan-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: rgba(6, 182, 212, 0.15); color: #06B6D4; border: 1px solid rgba(6, 182, 212, 0.3); }
     `;
     document.head.appendChild(style);
 

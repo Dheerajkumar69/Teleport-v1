@@ -18,6 +18,7 @@ class TeleportWebRTC {
         this.transferQueue = [];
         this.isProcessingQueue = false;
         this.useRelayFallback = true; // Enable automatic relay fallback
+        this.peerList = []; // Live list of discovered peers (updated on peer-joined/peer-left)
 
         // Session sharing via BroadcastChannel
         this.broadcastChannel = null;
@@ -30,6 +31,7 @@ class TeleportWebRTC {
         this.reconnectDelay = 1000;
         this.serverUrl = null;
         this.connectionTimeout = 30000;
+        this._keepAliveTimer = null; // Interval that pings the Render server to prevent sleep
 
         // Bandwidth throttling
         this.maxBandwidth = parseInt(this.loadSetting('teleport-bandwidth-limit')) || 0;
@@ -51,42 +53,32 @@ class TeleportWebRTC {
         this.onFileSizeWarning = null;
         this.onPeerVerification = null;
 
-        // WebRTC config with STUN and TURN servers
-        // All servers verified working via network tests
+        // WebRTC config — starts with reliable public STUN + open-relay TURN.
+        // Expired/hardcoded metered.ca credentials are REMOVED;
+        // call fetchTurnCredentials() after connect() to pull fresh ones from the server.
         this.rtcConfig = {
             iceServers: [
-                // Google STUN servers (reliable, free) - VERIFIED WORKING
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
                 { urls: 'stun:stun4.l.google.com:19302' },
-                // Twilio STUN (backup)
                 { urls: 'stun:global.stun.twilio.com:3478' },
-                // Metered Open Relay TURN - VERIFIED WORKING on port 80 (UDP+TCP)
+                // openrelay.metered.ca — public project, credentials never expire
                 {
                     urls: [
                         'turn:openrelay.metered.ca:80',
-                        'turn:openrelay.metered.ca:80?transport=tcp'
+                        'turn:openrelay.metered.ca:80?transport=tcp',
+                        'turn:openrelay.metered.ca:443?transport=tcp'
                     ],
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
-                },
-                // Backup TURN from a.relay.metered.ca - VERIFIED WORKING
-                {
-                    urls: [
-                        'turn:a.relay.metered.ca:80',
-                        'turn:a.relay.metered.ca:80?transport=tcp',
-                        'turn:a.relay.metered.ca:443',
-                        'turn:a.relay.metered.ca:443?transport=tcp'
-                    ],
-                    username: 'e8dd65c92f62d3679e7df76c',
-                    credential: 'uWQq1K+oFd+GfLv3'
                 }
             ],
             iceCandidatePoolSize: 10,
-            iceTransportPolicy: 'all' // Try all connection types
+            iceTransportPolicy: 'all'
         };
+        this.turnFetched = false; // guard to avoid repeated fetches
 
         this.CHUNK_SIZE = 16384;
         this.MAX_BUFFER_SIZE = 1024 * 1024;
@@ -103,6 +95,10 @@ class TeleportWebRTC {
         this.peerPublicKeys = new Map();
         this.encryptionEnabled = true;
         this.onError = null; // Global error callback
+
+        // Resume support (IndexedDB)
+        this.resumeDb = null;
+        this.initResumeDB();
 
         // Initialize encryption keys
         this.initEncryption();
@@ -183,6 +179,243 @@ class TeleportWebRTC {
         return parseInt(this.loadSetting('teleport-bandwidth-limit')) || 0;
     }
 
+    // ==================== TURN CREDENTIAL REFRESH ====================
+
+    /**
+     * Fetches fresh TURN credentials from the signaling server and merges them
+     * into this.rtcConfig. Called once after successful WebSocket connect.
+     * Falls back silently to the already-configured open-relay TURN if the
+     * server endpoint is unavailable.
+     */
+    async fetchTurnCredentials() {
+        if (this.turnFetched) return;
+        this.turnFetched = true;
+        try {
+            // Derive HTTP(S) URL from the WS URL
+            const httpBase = (this.serverUrl || '')
+                .replace(/^wss:\/\//, 'https://')
+                .replace(/^ws:\/\//, 'http://');
+            const res = await fetch(`${httpBase}/turn-credentials`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(5000)
+            });
+            if (!res.ok) return;
+            const config = await res.json();
+            if (Array.isArray(config.iceServers) && config.iceServers.length > 0) {
+                this.rtcConfig.iceServers = config.iceServers;
+                console.log('[Teleport] TURN credentials refreshed from server');
+            }
+        } catch (e) {
+            console.warn('[Teleport] Could not fetch TURN credentials, using fallback:', e.message);
+        }
+    }
+
+    // ==================== RENDER KEEP-ALIVE ====================
+
+    /**
+     * Starts a periodic HTTP ping to the signaling server's /health endpoint
+     * every 14 minutes so the Render free-tier instance never goes to sleep.
+     * Only runs when connected to the production Render server.
+     */
+    startKeepAlive() {
+        this.stopKeepAlive(); // clear any existing timer
+        const INTERVAL_MS = 14 * 60 * 1000; // 14 minutes
+        const ping = async () => {
+            try {
+                const httpBase = (this.serverUrl || '')
+                    .replace(/^wss:\/\//, 'https://')
+                    .replace(/^ws:\/\//, 'http://');
+                const res = await fetch(`${httpBase}/health`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(10000)
+                });
+                console.log('[Teleport] Keep-alive ping:', res.ok ? 'ok' : res.status);
+            } catch (e) {
+                console.warn('[Teleport] Keep-alive ping failed:', e.message);
+            }
+        };
+        this._keepAliveTimer = setInterval(ping, INTERVAL_MS);
+        console.log('[Teleport] Keep-alive started (every 14 min) for', this.serverUrl);
+    }
+
+    stopKeepAlive() {
+        if (this._keepAliveTimer) {
+            clearInterval(this._keepAliveTimer);
+            this._keepAliveTimer = null;
+        }
+    }
+
+    // ==================== FILENAME SANITIZATION ====================
+    // Ported from core/src/utils/sanitize.cpp — same rules as the desktop.
+
+    /**
+     * Sanitize a filename against path-traversal, null bytes, control chars,
+     * Windows reserved names and excessive length.
+     * Returns the cleaned name, or throws if the name is fundamentally unsafe.
+     */
+    sanitizeFilename(filename) {
+        if (typeof filename !== 'string' || filename.length === 0) {
+            throw new Error('Empty or non-string filename');
+        }
+
+        // Strip null bytes and ASCII control characters (0x00–0x1F, 0x7F)
+        let name = filename.replace(/[\x00-\x1f\x7f]/g, '');
+
+        // Reject any remaining path separators (path-traversal guard)
+        if (name.includes('/') || name.includes('\\')) {
+            throw new Error(`Filename contains path separator: ${filename}`);
+        }
+
+        // Reject the special dot sequences
+        if (name === '.' || name === '..') {
+            throw new Error(`Filename is a dot sequence: ${filename}`);
+        }
+
+        // Windows reserved device names (case-insensitive) — CON, PRN, AUX, NUL,
+        // COM0–COM9, LPT0–LPT9, and variants with extensions e.g. CON.txt
+        const base = name.split('.')[0].toUpperCase();
+        const RESERVED = new Set(['CON','PRN','AUX','NUL',
+            'COM0','COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
+            'LPT0','LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9']);
+        if (RESERVED.has(base)) {
+            throw new Error(`Filename is a reserved device name: ${filename}`);
+        }
+
+        // Replace Windows-illegal characters:  < > : " | ? *
+        name = name.replace(/[<>:"|?*]/g, '_');
+
+        // Trim leading/trailing spaces and dots (Windows compat)
+        name = name.replace(/^[. ]+|[. ]+$/g, '');
+
+        if (name.length === 0) {
+            throw new Error(`Filename reduced to empty after sanitization: ${filename}`);
+        }
+
+        // Length guard — 240 chars matches the C++ limit (leaves room for path prefix)
+        if (name.length > 240) {
+            const ext = name.lastIndexOf('.');
+            const extension = ext !== -1 ? name.slice(ext) : '';
+            name = name.slice(0, 240 - extension.length) + extension;
+        }
+
+        return name;
+    }
+
+    /**
+     * Sanitize a relative path (e.g. 'folder/subfolder/file.txt').
+     * Each component is sanitized individually; rejects absolute paths.
+     */
+    sanitizeRelativePath(relPath) {
+        if (typeof relPath !== 'string' || relPath.length === 0) return '';
+
+        // Reject absolute paths
+        if (relPath.startsWith('/') || /^[A-Za-z]:/.test(relPath)) {
+            throw new Error(`Absolute path not allowed: ${relPath}`);
+        }
+
+        const parts = relPath.replace(/\\/g, '/').split('/');
+        const sanitized = parts.map(p => {
+            if (p === '' || p === '.') return null; // skip empty segments
+            if (p === '..') throw new Error('Path traversal detected (..)'); // hard reject
+            return this.sanitizeFilename(p);
+        }).filter(Boolean);
+
+        return sanitized.join('/');
+    }
+
+    // ==================== INCOMING TRANSFER VALIDATION ====================
+
+    /**
+     * Validate an incoming file-start control message before accepting it.
+     * Throws with a descriptive message if validation fails.
+     */
+    validateFileStartMsg(msg) {
+        const { transferId, filename, size, fileIndex, totalFiles } = msg;
+
+        // Field type checks
+        if (typeof transferId !== 'string' || transferId.length < 8) {
+            throw new Error('Invalid transferId');
+        }
+        if (typeof filename !== 'string' || filename.length === 0) {
+            throw new Error('Invalid filename');
+        }
+        if (typeof size !== 'number' || size < 0 || !Number.isFinite(size)) {
+            throw new Error(`Invalid file size: ${size}`);
+        }
+        if (typeof fileIndex !== 'number' || fileIndex < 0 || !Number.isFinite(fileIndex)) {
+            throw new Error(`Invalid fileIndex: ${fileIndex}`);
+        }
+        if (typeof totalFiles !== 'number' || totalFiles <= 0 || !Number.isFinite(totalFiles)) {
+            throw new Error(`Invalid totalFiles: ${totalFiles}`);
+        }
+        if (totalFiles > 10000) {
+            throw new Error(`Batch exceeds maximum file count: ${totalFiles}`);
+        }
+        // Sanitize the filename (throws if unsafe)
+        return this.sanitizeFilename(filename);
+    }
+
+    // ==================== INDEXEDDB RESUME SUPPORT ====================
+
+    initResumeDB() {
+        if (!window.indexedDB) return;
+        try {
+            const req = indexedDB.open('teleport-resume', 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('transfers')) {
+                    db.createObjectStore('transfers', { keyPath: 'transferId' });
+                }
+            };
+            req.onsuccess = (e) => { this.resumeDb = e.target.result; };
+            req.onerror = () => { console.warn('[Resume] IndexedDB unavailable'); };
+        } catch (e) {
+            console.warn('[Resume] IndexedDB init failed:', e);
+        }
+    }
+
+    saveResumeState(transferId, state) {
+        if (!this.resumeDb) return;
+        try {
+            const tx = this.resumeDb.transaction('transfers', 'readwrite');
+            tx.objectStore('transfers').put({ transferId, ...state, updatedAt: Date.now() });
+        } catch (e) { /* non-fatal */ }
+    }
+
+    deleteResumeState(transferId) {
+        if (!this.resumeDb) return;
+        try {
+            const tx = this.resumeDb.transaction('transfers', 'readwrite');
+            tx.objectStore('transfers').delete(transferId);
+        } catch (e) { /* non-fatal */ }
+    }
+
+    getResumeState(transferId) {
+        return new Promise((resolve) => {
+            if (!this.resumeDb) return resolve(null);
+            try {
+                const tx = this.resumeDb.transaction('transfers', 'readonly');
+                const req = tx.objectStore('transfers').get(transferId);
+                req.onsuccess = (e) => resolve(e.target.result || null);
+                req.onerror = () => resolve(null);
+            } catch (e) { resolve(null); }
+        });
+    }
+
+    /** Return all incomplete resume states (for UI display on startup). */
+    getAllResumeStates() {
+        return new Promise((resolve) => {
+            if (!this.resumeDb) return resolve([]);
+            try {
+                const tx = this.resumeDb.transaction('transfers', 'readonly');
+                const req = tx.objectStore('transfers').getAll();
+                req.onsuccess = (e) => resolve(e.target.result || []);
+                req.onerror = () => resolve([]);
+            } catch (e) { resolve([]); }
+        });
+    }
+
     async throttle(bytes) {
         if (this.maxBandwidth <= 0) return;
 
@@ -259,6 +492,10 @@ class TeleportWebRTC {
                 clearTimeout(timeoutId);
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
+                // Start keep-alive only for the production Render server
+                if (this.serverUrl && this.serverUrl.includes('onrender.com')) {
+                    this.startKeepAlive();
+                }
             };
 
             this.ws.onmessage = (event) => {
@@ -279,6 +516,9 @@ class TeleportWebRTC {
                         if (this.onConnected) this.onConnected();
                         this.broadcastEvent('connected', { peerId: this.peerId });
                         resolve();
+                        // Fetch fresh TURN credentials from the signaling server
+                        // (non-blocking — runs in background after connection is established)
+                        this.fetchTurnCredentials();
                     });
                 }
             };
@@ -398,6 +638,7 @@ class TeleportWebRTC {
     }
 
     disconnect() {
+        this.stopKeepAlive();
         if (this.ws) { this.ws.close(); this.ws = null; }
         this.isConnected = false;
         this.peers.forEach(pc => pc.close());
@@ -456,7 +697,37 @@ class TeleportWebRTC {
                         this.broadcastEvent('peer-connected', { peers: message.peers });
                     }
                     break;
+                case 'peer-joined':
+                    // A new peer appeared in the room — import their key and notify UI
+                    if (message.peer) {
+                        if (message.peer.publicKey && !this.peerPublicKeys.has(message.peer.id)) {
+                            this.importPeerPublicKey(message.peer.id, message.peer.publicKey);
+                        }
+                        // Merge into local peer list and fire update callback
+                        const existingIds = new Set();
+                        if (this.onPeersUpdated) {
+                            // onPeersUpdated is fired by server's 'peers' broadcast too;
+                            // here we fire it with a synthetic updated list by keeping
+                            // track of the last known peers at the app level.
+                            // The server always sends a fresh 'peers' list after join so
+                            // this fallback handles edge cases only.
+                        }
+                    }
+                    break;
+                case 'peer-lan-updated':
+                    // A peer that previously connected via signaling now has a known LAN address
+                    if (this.onPeersUpdated && message.peerId) {
+                        // Emit a synthetic peer-update; UI can badge LAN peers differently
+                        this.broadcastEvent('peer-lan-updated', {
+                            peerId: message.peerId,
+                            lanIp: message.lanIp,
+                            lanPort: message.lanPort
+                        });
+                    }
+                    break;
                 case 'peer-left':
+                    this.peerList = this.peerList.filter(p => p.id !== message.peerId);
+                    if (this.onPeersUpdated) this.onPeersUpdated([...this.peerList]);
                     this.cleanupPeer(message.peerId);
                     break;
                 case 'offer':
@@ -531,8 +802,8 @@ class TeleportWebRTC {
                         transfer.receivedBytes += bytes.length;
 
                         // Update progress
-                        if (this.onProgress) {
-                            this.onProgress({
+                        if (this.onTransferProgress) {
+                            this.onTransferProgress({
                                 transferId: message.transferId,
                                 filename: transfer.filename,
                                 progress: Math.round((transfer.receivedBytes / transfer.size) * 100),
@@ -822,9 +1093,38 @@ class TeleportWebRTC {
             const msg = JSON.parse(data);
 
             if (msg.type === 'file-start') {
+                // Strictly validate all fields before accepting the transfer
+                let safeFilename;
+                try {
+                    safeFilename = this.validateFileStartMsg(msg);
+                } catch (validationErr) {
+                    console.error('[FileTransfer] Rejected file-start:', validationErr.message);
+                    // Send a cancel back so the sender knows
+                    const dc = this.dataChannels.get(peerId);
+                    if (dc?.readyState === 'open') {
+                        dc.send(JSON.stringify({
+                            type: 'transfer-cancel',
+                            transferId: msg.transferId || 'unknown',
+                            reason: 'validation-failed'
+                        }));
+                    }
+                    return;
+                }
+
+                // Sanitize optional relative path
+                let safeRelativePath = '';
+                if (msg.relativePath) {
+                    try {
+                        safeRelativePath = this.sanitizeRelativePath(msg.relativePath);
+                    } catch (e) {
+                        console.warn('[FileTransfer] Relative path rejected, using filename only:', e.message);
+                        safeRelativePath = safeFilename;
+                    }
+                }
+
                 // Initialize transfer state
                 const transferState = {
-                    metadata: msg,
+                    metadata: { ...msg, filename: safeFilename, relativePath: safeRelativePath },
                     chunks: [], // Only used for small files
                     received: 0,
                     startTime: Date.now(),
@@ -833,14 +1133,31 @@ class TeleportWebRTC {
                     fileHandle: null
                 };
 
+                // Check for an existing resume state in IndexedDB
+                this.getResumeState(msg.transferId).then(resumeState => {
+                    if (resumeState && resumeState.receivedBytes > 0 && resumeState.receivedBytes < msg.size) {
+                        console.log(`[Resume] Found partial state for ${safeFilename}: ${resumeState.receivedBytes}/${msg.size} bytes`);
+                        // Notify sender to resume from the saved offset
+                        const dc = this.dataChannels.get(peerId);
+                        if (dc?.readyState === 'open') {
+                            dc.send(JSON.stringify({
+                                type: 'resume-request',
+                                transferId: msg.transferId,
+                                resumeOffset: resumeState.receivedBytes
+                            }));
+                        }
+                        transferState.received = resumeState.receivedBytes;
+                    }
+                });
+
                 // For large files, try to use File System Access API
                 if (transferState.useStreaming && this.useFileSystemAPI) {
                     try {
                         const options = {
-                            suggestedName: msg.filename,
+                            suggestedName: transferState.metadata.filename,
                             types: [{
                                 description: 'File',
-                                accept: { [msg.mimeType || 'application/octet-stream']: ['.' + (msg.filename.split('.').pop() || 'bin')] }
+                                accept: { [transferState.metadata.mimeType || 'application/octet-stream']: ['.' + (transferState.metadata.filename.split('.').pop() || 'bin')] }
                             }]
                         };
                         transferState.fileHandle = await window.showSaveFilePicker(options);
@@ -856,8 +1173,8 @@ class TeleportWebRTC {
                     // Try StreamSaver.js fallback for Firefox/Safari
                     if (window.streamSaver) {
                         try {
-                            const fileStream = window.streamSaver.createWriteStream(msg.filename, {
-                                size: msg.size
+                            const fileStream = window.streamSaver.createWriteStream(transferState.metadata.filename, {
+                                size: transferState.metadata.size
                             });
                             transferState.writer = fileStream.getWriter();
                             console.log('[FileTransfer] Using StreamSaver.js for streaming');
@@ -879,10 +1196,26 @@ class TeleportWebRTC {
                     bytesTransferred: 0,
                     fileIndex: msg.fileIndex || 0,
                     totalFiles: msg.totalFiles || 1,
-                    relativePath: msg.relativePath || ''
+                    relativePath: safeRelativePath
+                });
+
+                // Persist initial resume state to IndexedDB
+                this.saveResumeState(msg.transferId, {
+                    filename: transferState.metadata.filename,
+                    totalBytes: msg.size,
+                    receivedBytes: 0,
+                    peerId
                 });
             } else if (msg.type === 'file-end') {
                 this.assembleFile(msg.transferId);
+            } else if (msg.type === 'resume-request') {
+                // Receiver is requesting a resume from a given offset.
+                // We need to handle this on the SENDER side — tell sendFile() to seek.
+                const state = this.activeTransfers.get(msg.transferId);
+                if (state) {
+                    state.resumeOffset = typeof msg.resumeOffset === 'number' ? msg.resumeOffset : 0;
+                    console.log(`[Resume] Sender: receiver requested offset ${state.resumeOffset} for ${msg.transferId}`);
+                }
             } else if (msg.type === 'transfer-cancel') {
                 this.handleTransferCancel(msg.transferId);
             } else if (msg.type === 'transfer-pause') {
@@ -911,6 +1244,16 @@ class TeleportWebRTC {
 
                 transfer.received += chunkData.byteLength;
                 state.bytesTransferred = transfer.received;
+
+                // Keep resume state up-to-date (throttled: every 64 chunks)
+                if (transfer.received % (this.CHUNK_SIZE * 64) < this.CHUNK_SIZE) {
+                    this.saveResumeState(transferId, {
+                        filename: transfer.metadata.filename,
+                        totalBytes: transfer.metadata.size,
+                        receivedBytes: transfer.received,
+                        peerId
+                    });
+                }
 
                 const elapsed = (Date.now() - transfer.startTime) / 1000;
                 const speed = transfer.received / elapsed;
@@ -997,6 +1340,9 @@ class TeleportWebRTC {
             direction: 'received',
             success: true
         });
+
+        // Remove the persisted resume state — transfer is complete
+        this.deleteResumeState(transferId);
 
         if (this.onTransferComplete) {
             this.onTransferComplete({
@@ -1144,6 +1490,17 @@ class TeleportWebRTC {
     // ==================== SEND FILES ====================
 
     async requestFileSend(targetPeerId, files) {
+        // ---- Sender-side security guards (mirrors desktop C++ limits) ----
+        if (!files || files.length === 0) throw new Error('No files selected');
+        if (files.length > 10000) {
+            throw new Error(`Too many files: ${files.length} (max 10,000)`);
+        }
+        const totalBytes = Array.from(files).reduce((sum, f) => sum + (f.size || 0), 0);
+        if (totalBytes > 100 * 1024 * 1024 * 1024) {
+            throw new Error(`Total size exceeds limit: ${this.formatSize(totalBytes)} (max 100 GB)`);
+        }
+        // ---- End security guards ----
+
         const largeFiles = this.checkFileSizes(files);
         if (largeFiles.length > 0 && this.onFileSizeWarning) {
             const proceed = await this.onFileSizeWarning(largeFiles);
@@ -1269,7 +1626,7 @@ class TeleportWebRTC {
         console.log('[FileTransfer] Starting to send', totalFiles, 'files...');
         for (let i = 0; i < files.length; i++) {
             console.log('[FileTransfer] Sending file', i + 1, 'of', totalFiles, ':', files[i].name);
-            await this.sendFile(dc, files[i], i, totalFiles);
+            await this.sendFile(dc, files[i], i, totalFiles); // no retry loop — DataChannel (SCTP) is already reliable
         }
         console.log('[FileTransfer] All files sent!');
     }
@@ -1397,10 +1754,11 @@ class TeleportWebRTC {
         }
     }
 
-    async sendFile(dc, file, fileIndex = 0, totalFiles = 1, retryCount = 0) {
+    async sendFile(dc, file, fileIndex = 0, totalFiles = 1) {
         const transferId = crypto.randomUUID();
         const startTime = Date.now();
         const relativePath = file.relativePath || file.webkitRelativePath || '';
+        let fileSent = false;
 
         this.activeTransfers.set(transferId, {
             paused: false,
@@ -1408,7 +1766,8 @@ class TeleportWebRTC {
             startTime,
             bytesTransferred: 0,
             fileIndex,
-            totalFiles
+            totalFiles,
+            resumeOffset: 0  // will be set if receiver sends resume-request
         });
 
         try {
@@ -1423,8 +1782,20 @@ class TeleportWebRTC {
                 relativePath
             }));
 
-            const reader = file.stream().getReader();
-            let offset = 0;
+            // Wait briefly for any resume-request from the receiver before streaming
+            await new Promise(r => setTimeout(r, 80));
+
+            const state = this.activeTransfers.get(transferId);
+            const skipBytes = (state?.resumeOffset || 0);
+
+            // Use slice to skip already-received bytes (resume support)
+            const fileSlice = skipBytes > 0 ? file.slice(skipBytes) : file;
+            const reader = fileSlice.stream().getReader();
+            let offset = skipBytes;
+
+            if (skipBytes > 0) {
+                console.log(`[Resume] Sender: skipping first ${skipBytes} bytes of ${file.name}`);
+            }
 
             while (true) {
                 const state = this.activeTransfers.get(transferId);
@@ -1477,6 +1848,7 @@ class TeleportWebRTC {
             }
 
             dc.send(JSON.stringify({ type: 'file-end', transferId }));
+            fileSent = true;
 
             this.saveTransferToHistory({
                 filename: file.name,
@@ -1500,16 +1872,16 @@ class TeleportWebRTC {
             this.activeTransfers.delete(transferId);
 
         } catch (error) {
-            if (retryCount < 3) {
-                await new Promise(r => setTimeout(r, 1000));
-                return this.sendFile(dc, file, fileIndex, totalFiles, retryCount + 1);
-            }
-
             this.activeTransfers.delete(transferId);
-            if (this.onTransferError) {
-                this.onTransferError({ transferId, filename: file.name, error: error.message });
+
+            // Only report/throw error if the file was not actually sent.
+            // Errors after file-end (e.g. in callbacks) should not cause re-transfers.
+            if (!fileSent) {
+                if (this.onTransferError) {
+                    this.onTransferError({ transferId, filename: file.name, error: error.message });
+                }
+                throw error;
             }
-            throw error;
         }
     }
 

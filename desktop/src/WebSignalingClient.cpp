@@ -653,9 +653,10 @@ bool WebSignalingClient::connectInternal() {
   m_messageThread =
       std::make_unique<std::thread>(&WebSignalingClient::processMessages, this);
 
-  // Start heartbeat thread
-  m_heartbeatThread =
-      std::make_unique<std::thread>(&WebSignalingClient::heartbeatLoop, this);
+  // Heartbeat thread disabled for stability - reconnect handled externally
+  // m_heartbeatThread =
+  //     std::make_unique<std::thread>(&WebSignalingClient::heartbeatLoop,
+  //     this);
 
   // Send join message
   std::ostringstream joinMsg;
@@ -678,28 +679,16 @@ void WebSignalingClient::disconnect() {
   m_running = false;
   m_autoReconnect = false; // Disable reconnect on explicit disconnect
 
-#ifdef USE_OPENSSL
-  // Clean up SSL before closing socket
-  if (m_ssl) {
-    SSL_shutdown(static_cast<SSL *>(m_ssl));
-    SSL_free(static_cast<SSL *>(m_ssl));
-    m_ssl = nullptr;
-  }
-  if (m_sslContext) {
-    SSL_CTX_free(static_cast<SSL_CTX *>(m_sslContext));
-    m_sslContext = nullptr;
-  }
-  m_useTLS = false;
-#endif
-
+  // Close socket FIRST to unblock any blocking recv/send calls in threads
   if (m_socket != -1) {
-    // Send close frame
+    // Try to send close frame (may fail if already closed)
     uint8_t closeFrame[4] = {0x88, 0x02, 0x03, 0xE8}; // Close with code 1000
-    sendWithTimeout(m_socket, closeFrame, 4, 1000);
+    sendWithTimeout(m_socket, closeFrame, 4, 100);    // Short timeout
     CLOSE_SOCKET(m_socket);
     m_socket = -1;
   }
 
+  // Now join threads (they should exit since socket is closed)
   if (m_messageThread && m_messageThread->joinable()) {
     m_messageThread->join();
   }
@@ -709,6 +698,19 @@ void WebSignalingClient::disconnect() {
   if (m_reconnectThread && m_reconnectThread->joinable()) {
     m_reconnectThread->join();
   }
+
+#ifdef USE_OPENSSL
+  // Clean up SSL AFTER threads are stopped
+  if (m_ssl) {
+    SSL_free(static_cast<SSL *>(m_ssl));
+    m_ssl = nullptr;
+  }
+  if (m_sslContext) {
+    SSL_CTX_free(static_cast<SSL_CTX *>(m_sslContext));
+    m_sslContext = nullptr;
+  }
+  m_useTLS = false;
+#endif
 
   m_state = ConnectionState::Disconnected;
 
@@ -911,14 +913,24 @@ void WebSignalingClient::processMessages() {
   frameBuffer.reserve(SignalingConfig::CHUNK_SIZE);
 
   while (m_running && !m_stopRequested) {
+    // Check if socket is still valid
+    if (m_socket == -1)
+      break;
+
     uint8_t header[2];
     int received =
         recvWithTimeout(m_socket, header, 2, SignalingConfig::READ_TIMEOUT_MS);
 
-    if (received <= 0) {
-      if (received == 0 || !m_running)
-        break;  // Connection closed or timeout
-      continue; // Timeout, keep trying
+    // Handle receive result
+    if (received == 0) {
+      // Connection closed by server
+      break;
+    }
+    if (received < 0) {
+      // Timeout or error - check if still running, then continue waiting
+      if (!m_running || m_stopRequested || m_socket == -1)
+        break;
+      continue;
     }
 
     // Parse WebSocket frame
