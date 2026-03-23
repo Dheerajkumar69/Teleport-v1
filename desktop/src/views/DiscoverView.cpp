@@ -366,166 +366,174 @@ void DiscoverView::RenderDeviceGrid() {
 void DiscoverView::RenderDeviceCard(const DeviceInfo &device, int index) {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   ImVec2 cardPos = ImGui::GetCursorScreenPos();
-  ImVec2 cardSize(300, 160); // Larger cards for better visibility
-
-  // Check hover
+  const ImVec2 cardSize(280.0f, 148.0f);
   ImVec2 cardEnd(cardPos.x + cardSize.x, cardPos.y + cardSize.y);
+
+  // Hover animation
   bool isHovered = ImGui::IsMouseHoveringRect(cardPos, cardEnd);
-
-  // Animate hover
   float targetHover = isHovered ? 1.0f : 0.0f;
-  cardHoverAnim_[index] += (targetHover - cardHoverAnim_[index]) * 0.2f;
+  cardHoverAnim_[index] += (targetHover - cardHoverAnim_[index]) * 0.18f;
+  float hov = cardHoverAnim_[index];
 
-  // Fade in animation
-  float fadeIn = device.fadeIn;
-  float alpha = std::max(0.5f, fadeIn); // Ensure minimum visibility
+  // ── Platform label & avatar colour ───────────────────────────────────────
+  const char *osLabel;
+  const char *typeLabel;
+  ImVec4 accentColor = theme_->GetColorVec(ThemeColor::Primary); // default purple
 
-  // Card background with glass effect
-  ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(
-      ImVec4(0.12f, 0.12f, 0.14f, 0.9f * alpha + cardHoverAnim_[index] * 0.1f));
+  if (device.isWeb) {
+    osLabel  = "W";
+    typeLabel = "Web Browser";
+    accentColor = ImVec4(0.18f, 0.56f, 0.94f, 1.0f);
+  } else if (device.os.find("Win") != std::string::npos) {
+    osLabel  = "W";
+    typeLabel = "Windows";
+    accentColor = ImVec4(0.0f, 0.47f, 0.84f, 1.0f);
+  } else if (device.os == "Android") {
+    osLabel  = "A";
+    typeLabel = "Android";
+    accentColor = ImVec4(0.40f, 0.73f, 0.27f, 1.0f);
+  } else if (device.os == "macOS" || device.os == "Darwin") {
+    osLabel  = "M";
+    typeLabel = "macOS";
+    accentColor = ImVec4(0.70f, 0.70f, 0.72f, 1.0f);
+  } else if (device.os == "iOS") {
+    osLabel  = "i";
+    typeLabel = "iOS";
+    accentColor = ImVec4(0.70f, 0.70f, 0.72f, 1.0f);
+  } else if (device.os.find("inux") != std::string::npos ||
+             device.os.find("linux") != std::string::npos) {
+    osLabel  = "L";
+    typeLabel = "Linux";
+    accentColor = ImVec4(0.90f, 0.49f, 0.13f, 1.0f);
+  } else {
+    osLabel  = "?";
+    typeLabel = device.os.empty() ? "Unknown" : device.os.c_str();
+  }
 
-  drawList->AddRectFilled(cardPos, cardEnd, bgColor, Theme::CardRadius);
+  // ── Card background ───────────────────────────────────────────────────────
+  ImU32 bgCol = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(0.11f + hov * 0.02f, 0.11f + hov * 0.02f,
+             0.13f + hov * 0.02f, 0.95f));
+  drawList->AddRectFilled(cardPos, cardEnd, bgCol, Theme::CardRadius);
 
-  // Border - brighter for better visibility
-  ImU32 borderColor = ImGui::ColorConvertFloat4ToU32(
-      ImVec4(0.3f + cardHoverAnim_[index] * 0.2f, 0.3f,
-             0.35f + cardHoverAnim_[index] * 0.3f, 0.8f));
-  drawList->AddRect(cardPos, cardEnd, borderColor, Theme::CardRadius, 0, 1.5f);
+  // Border: dim grey → primary purple on hover
+  ImVec4 borderBase(0.22f, 0.22f, 0.26f, 0.7f);
+  ImVec4 primVec = theme_->GetColorVec(ThemeColor::Primary);
+  ImU32 borderCol = ImGui::ColorConvertFloat4ToU32(ImVec4(
+      borderBase.x + (primVec.x - borderBase.x) * hov,
+      borderBase.y + (primVec.y - borderBase.y) * hov,
+      borderBase.z + (primVec.z - borderBase.z) * hov,
+      borderBase.w + (1.0f - borderBase.w) * hov));
+  drawList->AddRect(cardPos, cardEnd, borderCol, Theme::CardRadius, 0, 1.4f);
 
-  // Glow on hover
-  if (cardHoverAnim_[index] > 0.01f) {
-    ImVec4 glowVec = theme_->GetColorVec(ThemeColor::Primary);
-    glowVec.w = 0.2f * cardHoverAnim_[index];
-    ImU32 glowColor = ImGui::ColorConvertFloat4ToU32(glowVec);
-
-    for (int g = 3; g > 0; g--) {
-      float offset = (float)g * 3.0f;
-      drawList->AddRect(ImVec2(cardPos.x - offset, cardPos.y - offset),
-                        ImVec2(cardEnd.x + offset, cardEnd.y + offset),
-                        glowColor, Theme::CardRadius + offset, 0, 2.0f);
+  // Subtle purple glow on hover
+  if (hov > 0.02f) {
+    ImU32 glowCol = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(primVec.x, primVec.y, primVec.z, 0.15f * hov));
+    for (int g = 1; g <= 3; g++) {
+      float off = (float)g * 2.5f;
+      drawList->AddRect(
+          ImVec2(cardPos.x - off, cardPos.y - off),
+          ImVec2(cardEnd.x + off, cardEnd.y + off),
+          glowCol, Theme::CardRadius + off, 0, 1.5f);
     }
   }
 
-  // OS Badge - determine color and label based on OS
-  ImVec4 osColor =
-      theme_->GetColorVec(ThemeColor::Primary); // Default purple for Windows
-  const char *osLabel = OS_LABEL_UNKNOWN;
+  // ── Avatar circle ─────────────────────────────────────────────────────────
+  const float BADGE_R = 22.0f;
+  ImVec2 badgeCenter(cardPos.x + 22.0f + BADGE_R, cardPos.y + 20.0f + BADGE_R);
 
-  // Special handling for web peers
-  if (device.isWeb) {
-    osColor = ImVec4(0.2f, 0.6f, 0.9f, 1.0f); // Web blue
-    osLabel = "W";                            // Web
-  } else if (device.os == "Windows" ||
-             device.os.find("Win") != std::string::npos) {
-    osColor = ImVec4(0.0f, 0.47f, 0.84f, 1.0f); // Windows blue
-    osLabel = OS_LABEL_WINDOWS;
-  } else if (device.os == "Android") {
-    osColor = ImVec4(0.608f, 0.804f, 0.396f, 1.0f); // Android green
-    osLabel = OS_LABEL_ANDROID;
-  } else if (device.os == "macOS" || device.os == "iOS" ||
-             device.os == "Darwin") {
-    osColor = ImVec4(0.8f, 0.8f, 0.82f, 1.0f); // Apple silver
-    osLabel = OS_LABEL_MACOS;
-  } else if (device.os == "Linux" || device.os.find("linux") != std::string::npos) {
-    osColor = ImVec4(0.9f, 0.5f, 0.1f, 1.0f); // Orange for Linux
-    osLabel = OS_LABEL_LINUX;
-  } else {
-    osColor = theme_->GetColorVec(ThemeColor::Primary);
-    osLabel = OS_LABEL_UNKNOWN;
-  }
+  drawList->AddCircleFilled(badgeCenter, BADGE_R,
+      ImGui::ColorConvertFloat4ToU32(
+          ImVec4(accentColor.x, accentColor.y, accentColor.z, 0.18f)));
+  drawList->AddCircle(badgeCenter, BADGE_R,
+      ImGui::ColorConvertFloat4ToU32(
+          ImVec4(accentColor.x, accentColor.y, accentColor.z, 0.55f)),
+      32, 1.5f);
 
-  // OS Badge - circular background with letter
-  float badgeX = cardPos.x + 25;
-  float badgeY = cardPos.y + 30;
-  float badgeRadius = 28;
-
-  // Badge background circle
-  drawList->AddCircleFilled(ImVec2(badgeX + badgeRadius, badgeY + badgeRadius),
-                            badgeRadius,
-                            ImGui::ColorConvertFloat4ToU32(ImVec4(
-                                osColor.x, osColor.y, osColor.z, 0.25f)));
-
-  // Badge border
-  drawList->AddCircle(ImVec2(badgeX + badgeRadius, badgeY + badgeRadius),
-                      badgeRadius,
-                      ImGui::ColorConvertFloat4ToU32(
-                          ImVec4(osColor.x, osColor.y, osColor.z, 0.6f)),
-                      32, 2.0f);
-
-  // OS Letter (centered in badge)
   ImGui::PushFont(theme_->GetHeadingFont());
-  ImVec2 labelSize = ImGui::CalcTextSize(osLabel);
-  ImGui::SetCursorScreenPos(ImVec2(badgeX + badgeRadius - labelSize.x * 0.5f,
-                                   badgeY + badgeRadius - labelSize.y * 0.5f));
-  ImGui::TextColored(osColor, "%s", osLabel);
+  ImVec2 lsz = ImGui::CalcTextSize(osLabel);
+  ImGui::SetCursorScreenPos(ImVec2(badgeCenter.x - lsz.x * 0.5f,
+                                   badgeCenter.y - lsz.y * 0.5f));
+  ImGui::TextColored(accentColor, "%s", osLabel);
   ImGui::PopFont();
 
-  // Device name - larger and more prominent
+  // ── Device name ───────────────────────────────────────────────────────────
+  const float TX = cardPos.x + 22.0f + BADGE_R * 2.0f + 14.0f;
+
   ImGui::PushFont(theme_->GetHeadingFont());
-  ImGui::SetCursorScreenPos(ImVec2(cardPos.x + 95, cardPos.y + 22));
+  ImGui::SetCursorScreenPos(ImVec2(TX, cardPos.y + 24.0f));
   ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%s",
                      device.name.empty() ? "Unknown Device"
                                          : device.name.c_str());
   ImGui::PopFont();
 
-  // OS label with smaller font (show "Web Browser" for web peers)
+  // ── Type subtitle ─────────────────────────────────────────────────────────
   ImGui::PushFont(theme_->GetBodyFont());
-  ImGui::SetCursorScreenPos(ImVec2(cardPos.x + 95, cardPos.y + 52));
-  if (device.isWeb) {
-    ImGui::TextColored(osColor, "Web Browser");
-  } else {
-    ImGui::TextColored(osColor, "%s",
-                       device.os.empty() ? "Unknown OS" : device.os.c_str());
-  }
+  ImGui::SetCursorScreenPos(ImVec2(TX, cardPos.y + 48.0f));
+  ImGui::TextColored(ImVec4(accentColor.x, accentColor.y, accentColor.z, 0.8f),
+                     "%s", typeLabel);
   ImGui::PopFont();
 
-  // IP Address / Connection info
+  // ── Thin divider ──────────────────────────────────────────────────────────
+  float divY = cardPos.y + 84.0f;
+  drawList->AddLine(ImVec2(cardPos.x + 16.0f, divY),
+                    ImVec2(cardEnd.x - 16.0f, divY),
+                    IM_COL32(55, 55, 68, 160), 1.0f);
+
+  // ── Connection info ───────────────────────────────────────────────────────
   ImGui::PushFont(theme_->GetBodyFont());
-  ImGui::SetCursorScreenPos(ImVec2(cardPos.x + 25, cardPos.y + 100));
+  ImGui::SetCursorScreenPos(ImVec2(cardPos.x + 18.0f, divY + 10.0f));
+
   if (device.isWeb) {
-    // Web peer - no IP needed, show connection type
-    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "Via:");
-    ImGui::SameLine(0, 8);
-    ImGui::TextColored(ImVec4(0.2f, 0.7f, 0.5f, 1.0f), "Cloud Relay");
+    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary),
+                       "Via:");
+    ImGui::SameLine(0, 6);
+    ImGui::TextColored(ImVec4(0.2f, 0.75f, 0.55f, 1.0f), "Cloud Relay");
   } else {
-    // Local peer - show IP and port
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "IP:");
-    ImGui::SameLine(0, 8);
+    ImGui::SameLine(0, 6);
     ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%s",
                        device.ip.empty() ? "N/A" : device.ip.c_str());
-
-    // Port info
-    ImGui::SameLine(0, 20);
-    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary), "Port:");
-    ImGui::SameLine(0, 8);
-    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%d",
-                       device.port);
+    if (device.port > 0) {
+      ImGui::SameLine(0, 14);
+      ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary),
+                         "Port:");
+      ImGui::SameLine(0, 6);
+      ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary),
+                         "%d", device.port);
+    }
   }
   ImGui::PopFont();
 
-  // Send button (always visible, but more prominent on hover)
-  float buttonAlpha = 0.6f + cardHoverAnim_[index] * 0.4f;
-  ImGui::SetCursorScreenPos(ImVec2(cardPos.x + 190, cardPos.y + 120));
+  // ── Send button (right-aligned, small, themed) ────────────────────────────
+  const float BTN_W = 80.0f, BTN_H = 28.0f;
+  const float BTN_X = cardEnd.x - BTN_W - 14.0f;
+  const float BTN_Y = cardEnd.y - BTN_H - 12.0f;
 
-  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, buttonAlpha);
+  ImGui::SetCursorScreenPos(ImVec2(BTN_X, BTN_Y));
   ImGui::PushStyleColor(ImGuiCol_Button,
                         theme_->GetColorVec(ThemeColor::Primary));
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                         theme_->GetColorVec(ThemeColor::PrimaryLight));
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                        theme_->GetColorVec(ThemeColor::Primary));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
 
-  std::string buttonLabel = "Send##" + std::to_string(index);
-  if (ImGui::Button(buttonLabel.c_str(), ImVec2(90, 30))) {
-    selectedDeviceId_ = device.id;
-    sendRequestDeviceId_ = device.id; // Triggers navigation to Send view
+  std::string btnId = "Send##card" + std::to_string(index);
+  if (ImGui::Button(btnId.c_str(), ImVec2(BTN_W, BTN_H))) {
+    selectedDeviceId_    = device.id;
+    sendRequestDeviceId_ = device.id;
   }
 
-  ImGui::PopStyleVar(2);
-  ImGui::PopStyleColor(2);
+  ImGui::PopStyleVar();
+  ImGui::PopStyleColor(3);
 
-  // Reserve space for the card
+  // Reserve card space
+  ImGui::SetCursorScreenPos(cardPos);
   ImGui::Dummy(cardSize);
 }
+
 
 void DiscoverView::RenderEmptyState() {
   ImVec2 available = ImGui::GetContentRegionAvail();

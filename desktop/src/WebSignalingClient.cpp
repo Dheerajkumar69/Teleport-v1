@@ -2340,19 +2340,13 @@ bool WebSignalingClient::streamFileViaRelay(const std::string &targetPeerId,
 
 bool WebSignalingClient::streamFileOnline(const std::string &targetPeerId,
                                           const std::string &filePath) {
-  const OnlineTransportMode mode = getOnlineTransportMode();
-  if (mode == OnlineTransportMode::RelayOnly) {
-    return streamFileViaRelay(targetPeerId, filePath);
-  }
-
-  // Signaling hooks for WebRTC are available, but a native RTC data channel
-  // backend is not yet wired into this desktop build.
-  if (mode == OnlineTransportMode::PreferP2P && m_onError) {
-    m_onError(SignalingError::InvalidState,
-              "P2P transport unavailable in current build, using relay");
-  }
+  // This desktop build has no native WebRTC backend wired in.
+  // Always fall through to the server relay path — do NOT emit an error here,
+  // because that error propagates to TeleportBridge::onError which creates a
+  // spurious "? Failed / DNS resolution failed" entry in the Transfers view.
   return streamFileViaRelay(targetPeerId, filePath);
 }
+
 
 bool WebSignalingClient::sendOffer(const std::string &targetPeerId,
                                    const std::string &sdp) {

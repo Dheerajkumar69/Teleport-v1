@@ -1029,20 +1029,29 @@ class TeleportWebRTC {
         try {
             switch (message.type) {
                 case 'peers': {
+                    // This is the initial snapshot of who is already in the room.
+                    // BUG FIX: Desktop peers have fingerprint:null (server explicitly sets it null).
+                    // Web peers either have a fingerprint string or the field is absent.
+                    // Tag explicitly-null-fingerprint peers as relayOnly so the UI shows them
+                    // AND requestFileSend() skips WebRTC for them.
                     const incomingPeers = Array.isArray(message.peers) ? message.peers : [];
 
-                    // Import public keys from peers for E2E encryption
                     for (const peer of incomingPeers) {
                         if (peer.publicKey && !this.peerPublicKeys.has(peer.id)) {
                             this.importPeerPublicKey(peer.id, peer.publicKey);
                         }
                     }
 
-                    this.peerList = incomingPeers.map(peer => ({ ...peer }));
+                    this.peerList = incomingPeers.map(peer => ({
+                        ...peer,
+                        // Only explicitly null fingerprint = desktop peer = relay only
+                        relayOnly: peer.fingerprint === null || peer.fingerprint === 'null'
+                    }));
                     if (this.onPeersUpdated) this.onPeersUpdated([...this.peerList]);
                     this.broadcastEvent('peer-connected', { peers: [...this.peerList] });
                     break;
                 }
+
                 case 'peer-joined':
                     // BUG FIX (Bug C2): Server sends a flat object
                     //   { type:'peer-joined', id, name, platform, fingerprint, ... }
