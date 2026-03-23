@@ -59,7 +59,7 @@ add_subdirectory(cli)
 
 # Desktop UI (Windows and Linux)
 if(TELEPORT_BUILD_DESKTOP)
-    if(WIN32 OR (UNIX AND NOT APPLE))
+    if(WIN32 OR UNIX)
         add_subdirectory(desktop)
     endif()
 endif()

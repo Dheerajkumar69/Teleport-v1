@@ -79,7 +79,7 @@ private:
   bool darkMode_ = true;
   bool showNotifications_ = true;
   bool autoStart_ = false;
-  std::string signalingServerUrl_ = "wss://teleport-signal.fly.dev";
+  std::string signalingServerUrl_ = "wss://teleport-signaling.onrender.com";
 
   bool dirty_ = false;
 

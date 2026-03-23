@@ -19,6 +19,7 @@ class TeleportWebRTC {
         this.isProcessingQueue = false;
         this.useRelayFallback = true; // Enable automatic relay fallback
         this.peerList = []; // Live list of discovered peers (updated on peer-joined/peer-left)
+        this.fileHashCache = new Map(); // file cache key -> SHA-256 hex
 
         // Session sharing via BroadcastChannel
         this.broadcastChannel = null;
@@ -30,16 +31,21 @@ class TeleportWebRTC {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         this.serverUrl = null;
+        this.manualServerUrl = null;
         this.connectionTimeout = 30000;
         this._keepAliveTimer = null; // Interval that pings the Render server to prevent sleep
+        this.shouldReconnect = true;
+        this.signalingHealth = new Map(); // wsUrl -> { healthy, latency, lastSuccessAt, lastFailureAt }
+        this.signalingServers = this.loadSignalingServers();
 
         // Bandwidth throttling
         this.maxBandwidth = parseInt(this.loadSetting('teleport-bandwidth-limit')) || 0;
-        this.bytesThisSecond = 0;
-        this.lastThrottleReset = Date.now();
+        this.bandwidthTokens = this.maxBandwidth > 0 ? this.maxBandwidth : 0;
+        this.lastThrottleTick = Date.now();
 
         // File size warning threshold
         this.fileSizeWarningThreshold = 100 * 1024 * 1024;
+        this.MAX_IN_MEMORY_RECEIVE_SIZE = 512 * 1024 * 1024; // 512MB safety limit without streaming sink
 
         // Callbacks
         this.onPeersUpdated = null;
@@ -84,6 +90,9 @@ class TeleportWebRTC {
         this.MAX_BUFFER_SIZE = 1024 * 1024;
         this.TRANSFER_TIMEOUT = 300000; // 5 minutes base timeout
         this.CONNECTION_TIMEOUT = 30000; // 30 seconds for ICE negotiation
+        this.SIGNALING_ATTEMPT_TIMEOUT = 10000;
+        this.RESUME_READY_TIMEOUT = 15000;
+        this.RELAY_VERIFICATION_TIMEOUT = 15000;
 
         // Streaming config for large files
         this.STREAMING_THRESHOLD = 50 * 1024 * 1024; // 50MB - use streaming above this
@@ -172,11 +181,202 @@ class TeleportWebRTC {
 
     setBandwidthLimit(bytesPerSecond) {
         this.maxBandwidth = bytesPerSecond;
+        this.bandwidthTokens = bytesPerSecond > 0 ? bytesPerSecond : 0;
+        this.lastThrottleTick = Date.now();
         this.saveSetting('teleport-bandwidth-limit', bytesPerSecond.toString());
     }
 
     getBandwidthLimit() {
         return parseInt(this.loadSetting('teleport-bandwidth-limit')) || 0;
+    }
+
+    loadSignalingServers() {
+        try {
+            const raw = localStorage.getItem('teleport-signaling-servers');
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+
+            const normalized = parsed
+                .map(url => this.normalizeWebSocketUrl(url))
+                .filter(Boolean);
+
+            return Array.from(new Set(normalized));
+        } catch (e) {
+            return [];
+        }
+    }
+
+    saveSignalingServers(servers) {
+        const normalized = Array.from(new Set(
+            (Array.isArray(servers) ? servers : [])
+                .map(url => this.normalizeWebSocketUrl(url))
+                .filter(Boolean)
+        ));
+
+        this.signalingServers = normalized;
+        try {
+            localStorage.setItem('teleport-signaling-servers', JSON.stringify(normalized));
+        } catch (e) { }
+    }
+
+    setSignalingServers(servers) {
+        this.saveSignalingServers(servers);
+    }
+
+    getSignalingServers() {
+        if (this.signalingServers.length > 0) {
+            return [...this.signalingServers];
+        }
+        return this.getDefaultSignalingServers();
+    }
+
+    normalizeWebSocketUrl(url) {
+        if (typeof url !== 'string') return null;
+        const trimmed = url.trim();
+        if (!trimmed) return null;
+
+        const withScheme = /^wss?:\/\//i.test(trimmed) ? trimmed : `ws://${trimmed}`;
+        try {
+            const parsed = new URL(withScheme);
+            if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') return null;
+            return parsed.toString().replace(/\/$/, '');
+        } catch (e) {
+            return null;
+        }
+    }
+
+    toHttpBase(webSocketUrl) {
+        return (webSocketUrl || '')
+            .replace(/^wss:\/\//, 'https://')
+            .replace(/^ws:\/\//, 'http://')
+            .replace(/\/$/, '');
+    }
+
+    async fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+        const fetchOptions = { ...options };
+
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+            if (!fetchOptions.signal) {
+                fetchOptions.signal = AbortSignal.timeout(timeoutMs);
+            }
+            return fetch(url, fetchOptions);
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        fetchOptions.signal = controller.signal;
+
+        try {
+            return await fetch(url, fetchOptions);
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    getDefaultSignalingServers() {
+        const host = window.location.hostname;
+        const runtimeConfigured = Array.isArray(window.TELEPORT_SIGNALING_SERVERS)
+            ? window.TELEPORT_SIGNALING_SERVERS
+                .map(url => this.normalizeWebSocketUrl(url))
+                .filter(Boolean)
+            : [];
+
+        if (runtimeConfigured.length > 0) {
+            return Array.from(new Set(runtimeConfigured));
+        }
+
+        if (host === 'localhost' || host === '127.0.0.1') {
+            return [
+                this.normalizeWebSocketUrl('ws://localhost:3000'),
+                this.normalizeWebSocketUrl('wss://teleport-signaling.onrender.com')
+            ].filter(Boolean);
+        }
+
+        if (this.isPrivateIP(host)) {
+            return [
+                this.normalizeWebSocketUrl(`ws://${host}:3000`),
+                this.normalizeWebSocketUrl('wss://teleport-signaling.onrender.com')
+            ].filter(Boolean);
+        }
+
+        // Primary + backup production endpoints (backup can be overridden via settings).
+        return [
+            this.normalizeWebSocketUrl('wss://teleport-signaling.onrender.com'),
+            this.normalizeWebSocketUrl('wss://teleport-signaling-backup.onrender.com')
+        ].filter(Boolean);
+    }
+
+    async probeSignalingServer(webSocketUrl, timeoutMs = 2500) {
+        const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? () => performance.now()
+            : () => Date.now();
+        const startedAt = now();
+        try {
+            const healthUrl = `${this.toHttpBase(webSocketUrl)}/health`;
+            const res = await this.fetchWithTimeout(healthUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            }, timeoutMs);
+
+            const latency = now() - startedAt;
+            return {
+                url: webSocketUrl,
+                healthy: res.ok,
+                latency,
+                status: res.status
+            };
+        } catch (e) {
+            return {
+                url: webSocketUrl,
+                healthy: false,
+                latency: Number.POSITIVE_INFINITY,
+                status: 0
+            };
+        }
+    }
+
+    async getRankedSignalingServers(explicitServer = null) {
+        const explicit = this.normalizeWebSocketUrl(explicitServer);
+        if (explicit) return [explicit];
+
+        const candidates = [];
+        if (this.manualServerUrl) {
+            const normalizedManual = this.normalizeWebSocketUrl(this.manualServerUrl);
+            if (normalizedManual) candidates.push(normalizedManual);
+        }
+        candidates.push(...this.getSignalingServers());
+
+        const uniqueCandidates = Array.from(new Set(candidates.filter(Boolean)));
+        if (uniqueCandidates.length === 0) {
+            return [this.normalizeWebSocketUrl('wss://teleport-signaling.onrender.com')].filter(Boolean);
+        }
+
+        const probes = await Promise.all(uniqueCandidates.map(url => this.probeSignalingServer(url)));
+        const byUrl = new Map(probes.map(p => [p.url, p]));
+
+        uniqueCandidates.sort((a, b) => {
+            const pa = byUrl.get(a);
+            const pb = byUrl.get(b);
+
+            if (pa.healthy !== pb.healthy) return pa.healthy ? -1 : 1;
+
+            // Healthy servers are sorted by live latency.
+            if (pa.healthy && pb.healthy && pa.latency !== pb.latency) {
+                return pa.latency - pb.latency;
+            }
+
+            // Otherwise prefer most recently successful server.
+            const ha = this.signalingHealth.get(a) || {};
+            const hb = this.signalingHealth.get(b) || {};
+            const sa = ha.lastSuccessAt || 0;
+            const sb = hb.lastSuccessAt || 0;
+            if (sa !== sb) return sb - sa;
+
+            return 0;
+        });
+
+        return uniqueCandidates;
     }
 
     // ==================== TURN CREDENTIAL REFRESH ====================
@@ -190,25 +390,38 @@ class TeleportWebRTC {
     async fetchTurnCredentials() {
         if (this.turnFetched) return;
         this.turnFetched = true;
-        try {
-            // Derive HTTP(S) URL from the WS URL
-            const httpBase = (this.serverUrl || '')
-                .replace(/^wss:\/\//, 'https://')
-                .replace(/^ws:\/\//, 'http://');
-            const res = await fetch(`${httpBase}/turn-credentials`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-                signal: AbortSignal.timeout(5000)
-            });
-            if (!res.ok) return;
-            const config = await res.json();
-            if (Array.isArray(config.iceServers) && config.iceServers.length > 0) {
-                this.rtcConfig.iceServers = config.iceServers;
-                console.log('[Teleport] TURN credentials refreshed from server');
+
+        const candidates = await this.getRankedSignalingServers(null);
+        for (const wsUrl of candidates) {
+            try {
+                const httpBase = this.toHttpBase(wsUrl);
+                const res = await this.fetchWithTimeout(`${httpBase}/turn-credentials`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                }, 5000);
+
+                if (!res.ok) continue;
+                const config = await res.json();
+                if (Array.isArray(config.iceServers) && config.iceServers.length > 0) {
+                    this.rtcConfig.iceServers = config.iceServers;
+                    this.signalingHealth.set(wsUrl, {
+                        ...(this.signalingHealth.get(wsUrl) || {}),
+                        healthy: true,
+                        lastSuccessAt: Date.now()
+                    });
+                    console.log('[Teleport] TURN credentials refreshed from server', wsUrl);
+                    return;
+                }
+            } catch (e) {
+                this.signalingHealth.set(wsUrl, {
+                    ...(this.signalingHealth.get(wsUrl) || {}),
+                    healthy: false,
+                    lastFailureAt: Date.now()
+                });
             }
-        } catch (e) {
-            console.warn('[Teleport] Could not fetch TURN credentials, using fallback:', e.message);
         }
+
+        console.warn('[Teleport] Could not fetch TURN credentials from any signaling endpoint, using fallback TURN list');
     }
 
     // ==================== RENDER KEEP-ALIVE ====================
@@ -226,10 +439,9 @@ class TeleportWebRTC {
                 const httpBase = (this.serverUrl || '')
                     .replace(/^wss:\/\//, 'https://')
                     .replace(/^ws:\/\//, 'http://');
-                const res = await fetch(`${httpBase}/health`, {
-                    method: 'GET',
-                    signal: AbortSignal.timeout(10000)
-                });
+                const res = await this.fetchWithTimeout(`${httpBase}/health`, {
+                    method: 'GET'
+                }, 10000);
                 console.log('[Teleport] Keep-alive ping:', res.ok ? 'ok' : res.status);
             } catch (e) {
                 console.warn('[Teleport] Keep-alive ping failed:', e.message);
@@ -419,20 +631,29 @@ class TeleportWebRTC {
     async throttle(bytes) {
         if (this.maxBandwidth <= 0) return;
 
+        // Token bucket: smoother rate limiting than coarse 1-second windows.
         const now = Date.now();
-        if (now - this.lastThrottleReset > 1000) {
-            this.bytesThisSecond = 0;
-            this.lastThrottleReset = now;
+        const elapsedMs = Math.max(0, now - this.lastThrottleTick);
+        this.lastThrottleTick = now;
+
+        const refill = (this.maxBandwidth * elapsedMs) / 1000;
+        this.bandwidthTokens = Math.min(this.maxBandwidth, this.bandwidthTokens + refill);
+
+        if (this.bandwidthTokens < bytes) {
+            const missing = bytes - this.bandwidthTokens;
+            const waitTime = Math.ceil((missing / this.maxBandwidth) * 1000);
+            if (waitTime > 0) {
+                await new Promise(r => setTimeout(r, waitTime));
+            }
+
+            const afterWait = Date.now();
+            const elapsedAfterWait = Math.max(0, afterWait - this.lastThrottleTick);
+            this.lastThrottleTick = afterWait;
+            const refillAfterWait = (this.maxBandwidth * elapsedAfterWait) / 1000;
+            this.bandwidthTokens = Math.min(this.maxBandwidth, this.bandwidthTokens + refillAfterWait);
         }
 
-        this.bytesThisSecond += bytes;
-
-        if (this.bytesThisSecond >= this.maxBandwidth) {
-            const waitTime = 1000 - (now - this.lastThrottleReset);
-            if (waitTime > 0) await new Promise(r => setTimeout(r, waitTime));
-            this.bytesThisSecond = 0;
-            this.lastThrottleReset = Date.now();
-        }
+        this.bandwidthTokens = Math.max(0, this.bandwidthTokens - bytes);
     }
 
     // ==================== TRANSFER HISTORY ====================
@@ -459,79 +680,160 @@ class TeleportWebRTC {
 
     // ==================== CONNECTION ====================
 
-    connect(serverUrl = null) {
-        return new Promise((resolve, reject) => {
-            // Auto-detect: use localhost for local development, Render for production
-            if (serverUrl) {
-                this.serverUrl = serverUrl;
-            } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                this.serverUrl = 'ws://localhost:3000';
-                console.log('[Teleport] Using local signaling server');
-            } else if (this.isPrivateIP(window.location.hostname)) {
-                // Local network testing - connect to signaling server on same host
-                this.serverUrl = `ws://${window.location.hostname}:3000`;
-                console.log('[Teleport] Using local network signaling server:', this.serverUrl);
-            } else {
-                this.serverUrl = 'wss://teleport-signaling.onrender.com';
-                console.log('[Teleport] Using production signaling server');
-            }
+    async connect(serverUrl = null) {
+        this.shouldReconnect = true;
 
-            const timeoutId = setTimeout(() => {
-                reject(new Error('Connection timeout'));
-            }, this.CONNECTION_TIMEOUT);
+        const rankedServers = await this.getRankedSignalingServers(serverUrl);
+        let lastError = null;
 
+        for (const candidate of rankedServers) {
             try {
-                this.ws = new WebSocket(this.serverUrl);
+                await this.connectToSignalingServer(candidate);
+                return;
             } catch (e) {
-                clearTimeout(timeoutId);
-                reject(new Error('Failed to connect'));
+                lastError = e;
+                this.signalingHealth.set(candidate, {
+                    ...(this.signalingHealth.get(candidate) || {}),
+                    healthy: false,
+                    lastFailureAt: Date.now()
+                });
+                console.warn('[Teleport] Signaling candidate failed:', candidate, e.message || e);
+            }
+        }
+
+        throw (lastError || new Error('No signaling servers reachable'));
+    }
+
+    connectToSignalingServer(serverUrl) {
+        return new Promise((resolve, reject) => {
+            const normalizedUrl = this.normalizeWebSocketUrl(serverUrl);
+            if (!normalizedUrl) {
+                reject(new Error(`Invalid signaling URL: ${serverUrl}`));
                 return;
             }
 
-            this.ws.onopen = () => {
+            if (this.ws) {
+                try { this.ws.close(); } catch (e) { }
+                this.ws = null;
+            }
+
+            this.serverUrl = normalizedUrl;
+            this.turnFetched = false;
+
+            const attemptTimeout = Math.min(this.CONNECTION_TIMEOUT, this.SIGNALING_ATTEMPT_TIMEOUT);
+            let settled = false;
+            let joined = false;
+
+            let ws;
+            try {
+                ws = new WebSocket(this.serverUrl);
+            } catch (e) {
+                reject(new Error(`Failed to create WebSocket for ${this.serverUrl}`));
+                return;
+            }
+
+            this.ws = ws;
+
+            const timeoutId = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                try { ws.close(); } catch (e) { }
+                if (this.ws === ws) this.ws = null;
+                reject(new Error(`Connection timeout: ${this.serverUrl}`));
+            }, attemptTimeout);
+
+            const rejectOnce = (error) => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timeoutId);
-                this.isConnected = true;
-                this.reconnectAttempts = 0;
-                // Start keep-alive only for the production Render server
-                if (this.serverUrl && this.serverUrl.includes('onrender.com')) {
-                    this.startKeepAlive();
-                }
+                if (this.ws === ws) this.ws = null;
+                this.isConnected = false;
+                reject(error instanceof Error ? error : new Error(String(error)));
             };
 
-            this.ws.onmessage = (event) => {
-                const message = JSON.parse(event.data);
+            const resolveOnce = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                resolve();
+            };
+
+            ws.onopen = () => {
+                this.isConnected = true;
+                this.reconnectAttempts = 0;
+
+                if (this.serverUrl && this.serverUrl.includes('onrender.com')) {
+                    this.startKeepAlive();
+                } else {
+                    this.stopKeepAlive();
+                }
+
+                this.signalingHealth.set(this.serverUrl, {
+                    ...(this.signalingHealth.get(this.serverUrl) || {}),
+                    healthy: true,
+                    lastSuccessAt: Date.now()
+                });
+            };
+
+            ws.onmessage = (event) => {
+                let message;
+                try {
+                    message = JSON.parse(event.data);
+                } catch (e) {
+                    console.warn('[Teleport] Dropping invalid signaling payload:', e.message);
+                    return;
+                }
+
                 this.handleSignalingMessage(message);
 
                 if (message.type === 'welcome') {
+                    joined = true;
                     this.peerId = message.peerId;
                     this.generateFingerprint().then(async () => {
                         const publicKey = await this.exportPublicKey();
+                        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                            rejectOnce(new Error('WebSocket closed before join handshake completed'));
+                            return;
+                        }
+
+                        // BUG FIX (Bug C1): Web was joining room 'teleport-lan' but the desktop
+                        // always joins 'teleport-default'. Peers in different rooms never see each
+                        // other, so desktop↔web discovery was completely broken.
                         this.ws.send(JSON.stringify({
                             type: 'join',
-                            room: 'teleport-lan',
+                            room: 'teleport-default',
                             name: this.deviceName,
                             fingerprint: this.peerFingerprint,
-                            publicKey: publicKey
+                            publicKey
                         }));
+
                         if (this.onConnected) this.onConnected();
                         this.broadcastEvent('connected', { peerId: this.peerId });
-                        resolve();
-                        // Fetch fresh TURN credentials from the signaling server
-                        // (non-blocking — runs in background after connection is established)
+                        resolveOnce();
+
+                        // Fetch fresh TURN credentials from primary/backup signaling endpoints.
                         this.fetchTurnCredentials();
-                    });
+                    }).catch(err => rejectOnce(err));
                 }
             };
 
-            this.ws.onclose = () => {
+            ws.onclose = () => {
+                if (!joined) {
+                    rejectOnce(new Error(`Closed before welcome from ${this.serverUrl}`));
+                    return;
+                }
+
                 this.isConnected = false;
                 if (this.onDisconnected) this.onDisconnected();
-                this.attemptReconnect();
+                if (this.shouldReconnect) {
+                    this.attemptReconnect();
+                }
             };
 
-            this.ws.onerror = () => {
-                clearTimeout(timeoutId);
-                if (!this.isConnected) reject(new Error('Connection failed'));
+            ws.onerror = () => {
+                if (!joined) {
+                    rejectOnce(new Error(`WebSocket error: ${this.serverUrl}`));
+                }
             };
         });
     }
@@ -617,12 +919,50 @@ class TeleportWebRTC {
         return await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, key, encryptedData);
     }
 
+    normalizeSha256(hash) {
+        if (typeof hash !== 'string') return null;
+        const trimmed = hash.trim().toLowerCase();
+        if (!/^[a-f0-9]{64}$/.test(trimmed)) return null;
+        return trimmed;
+    }
+
+    getFileCacheKey(file) {
+        return `${file.name}:${file.size}:${file.lastModified || 0}`;
+    }
+
+    async computeFileSha256(file) {
+        const cacheKey = this.getFileCacheKey(file);
+        if (this.fileHashCache.has(cacheKey)) {
+            return this.fileHashCache.get(cacheKey);
+        }
+
+        const hasher = new IncrementalSHA256();
+        const reader = file.stream().getReader();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            hasher.update(value);
+        }
+
+        const digestHex = hasher.hex();
+        this.fileHashCache.set(cacheKey, digestHex);
+        if (this.fileHashCache.size > 500) {
+            // Bounded cache to prevent unbounded growth in long sessions.
+            this.fileHashCache.clear();
+            this.fileHashCache.set(cacheKey, digestHex);
+        }
+
+        return digestHex;
+    }
+
     handleError(message, error) {
         console.error(`[Teleport Error] ${message}:`, error);
         if (this.onError) this.onError({ message, error: error?.message || String(error) });
     }
 
     attemptReconnect() {
+        if (!this.shouldReconnect) return;
         if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
 
         this.reconnectAttempts++;
@@ -632,12 +972,13 @@ class TeleportWebRTC {
 
         setTimeout(() => {
             if (!this.isConnected) {
-                this.connect(this.serverUrl).catch(() => { });
+                this.connect(null).catch(() => { });
             }
         }, delay);
     }
 
     disconnect() {
+        this.shouldReconnect = false;
         this.stopKeepAlive();
         if (this.ws) { this.ws.close(); this.ws = null; }
         this.isConnected = false;
@@ -676,8 +1017,10 @@ class TeleportWebRTC {
             throw new Error('Invalid IP address or hostname format');
         }
         const newServerUrl = `ws://${ip}:${port}`;
+        this.manualServerUrl = newServerUrl;
         this.disconnect();
-        return this.connect(newServerUrl);
+        this.shouldReconnect = true;
+        return this.connect(null);
     }
 
     // ==================== SIGNALING ====================
@@ -685,39 +1028,74 @@ class TeleportWebRTC {
     handleSignalingMessage(message) {
         try {
             switch (message.type) {
-                case 'peers':
-                    if (this.onPeersUpdated) {
-                        // Import public keys from peers for E2E encryption
-                        for (const peer of message.peers) {
-                            if (peer.publicKey && !this.peerPublicKeys.has(peer.id)) {
-                                this.importPeerPublicKey(peer.id, peer.publicKey);
-                            }
+                case 'peers': {
+                    const incomingPeers = Array.isArray(message.peers) ? message.peers : [];
+
+                    // Import public keys from peers for E2E encryption
+                    for (const peer of incomingPeers) {
+                        if (peer.publicKey && !this.peerPublicKeys.has(peer.id)) {
+                            this.importPeerPublicKey(peer.id, peer.publicKey);
                         }
-                        this.onPeersUpdated(message.peers);
-                        this.broadcastEvent('peer-connected', { peers: message.peers });
                     }
+
+                    this.peerList = incomingPeers.map(peer => ({ ...peer }));
+                    if (this.onPeersUpdated) this.onPeersUpdated([...this.peerList]);
+                    this.broadcastEvent('peer-connected', { peers: [...this.peerList] });
                     break;
+                }
                 case 'peer-joined':
-                    // A new peer appeared in the room — import their key and notify UI
-                    if (message.peer) {
-                        if (message.peer.publicKey && !this.peerPublicKeys.has(message.peer.id)) {
-                            this.importPeerPublicKey(message.peer.id, message.peer.publicKey);
-                        }
-                        // Merge into local peer list and fire update callback
-                        const existingIds = new Set();
-                        if (this.onPeersUpdated) {
-                            // onPeersUpdated is fired by server's 'peers' broadcast too;
-                            // here we fire it with a synthetic updated list by keeping
-                            // track of the last known peers at the app level.
-                            // The server always sends a fresh 'peers' list after join so
-                            // this fallback handles edge cases only.
+                    // BUG FIX (Bug C2): Server sends a flat object
+                    //   { type:'peer-joined', id, name, platform, fingerprint, ... }
+                    // but this handler was reading message.peer.id (nested).
+                    // Desktop peers were silently dropped, so they never appeared in
+                    // the web UI. Now we support both schemas.
+                    {
+                        const peerData = message.peer || message; // nested or flat
+                        if (peerData?.id) {
+                            if (peerData.publicKey && !this.peerPublicKeys.has(peerData.id)) {
+                                this.importPeerPublicKey(peerData.id, peerData.publicKey);
+                            }
+
+                            // BUG FIX (C2b): Desktop peers send fingerprint:null in the
+                            // join message. Tag them as relay-only so requestFileSend()
+                            // skips WebRTC negotiation (the desktop has no WebRTC stack).
+                            const isDesktopPeer = peerData.fingerprint === null ||
+                                                  peerData.fingerprint === 'null' ||
+                                                  peerData.platform === 'desktop';
+                            const peerRecord = {
+                                ...peerData,
+                                relayOnly: isDesktopPeer
+                            };
+
+                            const existingIdx = this.peerList.findIndex(p => p.id === peerData.id);
+                            if (existingIdx >= 0) {
+                                this.peerList[existingIdx] = { ...this.peerList[existingIdx], ...peerRecord };
+                            } else {
+                                this.peerList.push({ ...peerRecord });
+                            }
+
+                            if (this.onPeersUpdated) this.onPeersUpdated([...this.peerList]);
+                            this.broadcastEvent('peer-connected', { peers: [...this.peerList] });
                         }
                     }
                     break;
                 case 'peer-lan-updated':
                     // A peer that previously connected via signaling now has a known LAN address
-                    if (this.onPeersUpdated && message.peerId) {
-                        // Emit a synthetic peer-update; UI can badge LAN peers differently
+                    if (message.peerId) {
+                        const peerIdx = this.peerList.findIndex(p => p.id === message.peerId);
+                        if (peerIdx >= 0) {
+                            this.peerList[peerIdx] = {
+                                ...this.peerList[peerIdx],
+                                isLan: true,
+                                lanIp: message.lanIp || this.peerList[peerIdx].lanIp || null,
+                                lanPort: Number.isFinite(message.lanPort)
+                                    ? message.lanPort
+                                    : (this.peerList[peerIdx].lanPort || null)
+                            };
+                            if (this.onPeersUpdated) this.onPeersUpdated([...this.peerList]);
+                        }
+
+                        // Emit cross-tab update so every UI instance can re-render badges
                         this.broadcastEvent('peer-lan-updated', {
                             peerId: message.peerId,
                             lanIp: message.lanIp,
@@ -765,6 +1143,27 @@ class TeleportWebRTC {
                 case 'relay-start': {
                     // Receiver: incoming relay transfer
                     console.log('[Relay] Receiving file via server relay:', message.filename);
+                    const expectedSha256 = this.normalizeSha256(message.sha256);
+                    if (typeof message.sha256 !== 'undefined' && !expectedSha256) {
+                        console.warn('[Relay] relay-start contains invalid SHA-256, cancelling transfer');
+                        this.sendRelayVerificationAck(
+                            message.from,
+                            message.transferId,
+                            false,
+                            'invalid-sha256',
+                            null
+                        );
+                        if (this.ws?.readyState === WebSocket.OPEN && message.from) {
+                            this.ws.send(JSON.stringify({
+                                type: 'relay-cancel',
+                                to: message.from,
+                                transferId: message.transferId,
+                                reason: 'invalid-sha256'
+                            }));
+                        }
+                        break;
+                    }
+
                     const transfer = {
                         id: message.transferId,
                         from: message.from,
@@ -773,6 +1172,8 @@ class TeleportWebRTC {
                         mimeType: message.mimeType,
                         chunks: [],
                         receivedBytes: 0,
+                        expectedSha256,
+                        hasher: new IncrementalSHA256(),
                         fileIndex: message.fileIndex,
                         totalFiles: message.totalFiles
                     };
@@ -801,12 +1202,47 @@ class TeleportWebRTC {
                         transfer.chunks.push(bytes);
                         transfer.receivedBytes += bytes.length;
 
+                        if (transfer.hasher) {
+                            transfer.hasher.update(bytes);
+                        }
+
+                        if (Number.isFinite(transfer.size) && transfer.receivedBytes > transfer.size) {
+                            this.relayIncoming.delete(message.transferId);
+                            this.activeTransfers.delete(message.transferId);
+
+                            this.sendRelayVerificationAck(
+                                transfer.from,
+                                message.transferId,
+                                false,
+                                'size-overflow',
+                                transfer.hasher ? transfer.hasher.hex() : null
+                            );
+
+                            if (this.ws?.readyState === WebSocket.OPEN && transfer.from) {
+                                this.ws.send(JSON.stringify({
+                                    type: 'relay-cancel',
+                                    to: transfer.from,
+                                    transferId: message.transferId,
+                                    reason: 'size-overflow'
+                                }));
+                            }
+
+                            if (this.onTransferError) {
+                                this.onTransferError({
+                                    transferId: message.transferId,
+                                    filename: transfer.filename,
+                                    error: 'Relay transfer exceeded declared file size.'
+                                });
+                            }
+                            break;
+                        }
+
                         // Update progress
                         if (this.onTransferProgress) {
                             this.onTransferProgress({
                                 transferId: message.transferId,
                                 filename: transfer.filename,
-                                progress: Math.round((transfer.receivedBytes / transfer.size) * 100),
+                                progress: transfer.size > 0 ? (transfer.receivedBytes / transfer.size) : 1,
                                 received: transfer.receivedBytes,
                                 total: transfer.size,
                                 speed: 0,
@@ -825,6 +1261,51 @@ class TeleportWebRTC {
 
                         // Assemble file from chunks
                         const totalSize = transfer.chunks.reduce((sum, c) => sum + c.length, 0);
+                        const actualSha256 = transfer.hasher ? transfer.hasher.hex() : null;
+                        const sizeMismatch = Number.isFinite(transfer.size) && totalSize !== transfer.size;
+                        const hashMismatch = !!transfer.expectedSha256 && actualSha256 !== transfer.expectedSha256;
+
+                        if (sizeMismatch || hashMismatch) {
+                            this.sendRelayVerificationAck(
+                                transfer.from,
+                                message.transferId,
+                                false,
+                                sizeMismatch ? 'size-mismatch' : 'sha256-mismatch',
+                                actualSha256
+                            );
+
+                            if (this.ws?.readyState === WebSocket.OPEN && transfer.from) {
+                                this.ws.send(JSON.stringify({
+                                    type: 'relay-cancel',
+                                    to: transfer.from,
+                                    transferId: message.transferId,
+                                    reason: sizeMismatch ? 'size-mismatch' : 'sha256-mismatch'
+                                }));
+                            }
+
+                            this.saveTransferToHistory({
+                                filename: transfer.filename,
+                                size: totalSize,
+                                direction: 'received',
+                                success: false,
+                                sha256: actualSha256 || null
+                            });
+
+                            if (this.onTransferError) {
+                                this.onTransferError({
+                                    transferId: message.transferId,
+                                    filename: transfer.filename,
+                                    error: sizeMismatch
+                                        ? `Relay size mismatch (${this.formatSize(totalSize)} / ${this.formatSize(transfer.size)}).`
+                                        : 'Relay SHA-256 verification failed.'
+                                });
+                            }
+
+                            this.relayIncoming.delete(message.transferId);
+                            this.activeTransfers.delete(message.transferId);
+                            break;
+                        }
+
                         const combined = new Uint8Array(totalSize);
                         let offset = 0;
                         for (const chunk of transfer.chunks) {
@@ -847,12 +1328,31 @@ class TeleportWebRTC {
                         this.relayIncoming.delete(message.transferId);
                         this.activeTransfers.delete(message.transferId);
 
+                        this.saveTransferToHistory({
+                            filename: transfer.filename,
+                            size: totalSize,
+                            direction: 'received',
+                            success: true,
+                            sha256: actualSha256 || null,
+                            sha256Verified: !!transfer.expectedSha256
+                        });
+
                         // Notify complete
+                        this.sendRelayVerificationAck(
+                            transfer.from,
+                            message.transferId,
+                            true,
+                            '',
+                            actualSha256
+                        );
+
                         if (this.onTransferComplete) {
                             this.onTransferComplete({
                                 transferId: message.transferId,
                                 filename: transfer.filename,
                                 size: transfer.size,
+                                sha256: actualSha256 || null,
+                                sha256Verified: !!transfer.expectedSha256,
                                 isRelay: true
                             });
                         }
@@ -860,10 +1360,50 @@ class TeleportWebRTC {
                     break;
                 }
 
+                case 'relay-verified': {
+                    const state = this.activeTransfers.get(message.transferId);
+                    if (state) {
+                        state.relayVerifyReady = true;
+                        state.relayVerifyOk = !!message.ok;
+                        state.relayVerifyReason = typeof message.reason === 'string' ? message.reason : '';
+                        state.relayVerifiedSha256 = this.normalizeSha256(message.sha256);
+                    }
+                    break;
+                }
+
                 case 'relay-cancel': {
                     // Cancel relay transfer
+                    const transfer = this.relayIncoming.get(message.transferId);
+                    const state = this.activeTransfers.get(message.transferId);
                     this.relayIncoming.delete(message.transferId);
-                    this.activeTransfers.delete(message.transferId);
+
+                    if (transfer) {
+                        this.activeTransfers.delete(message.transferId);
+                    }
+
+                    const relayError = this.getRelayReasonMessage(message.reason) || 'Relay transfer cancelled by remote peer.';
+
+                    if (state) {
+                        state.cancelled = true;
+                        state.cancelReason = relayError;
+                        state.relayVerifyReady = true;
+                        state.relayVerifyOk = false;
+                        state.relayVerifyReason = typeof message.reason === 'string'
+                            ? message.reason
+                            : 'relay-cancelled';
+                    }
+
+                    if (this.onTransferError) {
+                        const isSenderSideRelay = !transfer && !!state?.isRelay;
+                        const canAttributeTransfer = !!transfer || !!state;
+                        if (!isSenderSideRelay && canAttributeTransfer) {
+                            this.onTransferError({
+                                transferId: message.transferId,
+                                filename: transfer?.filename || state?.filename,
+                                error: relayError
+                            });
+                        }
+                    }
                     break;
                 }
             }
@@ -939,7 +1479,8 @@ class TeleportWebRTC {
             }
         };
 
-        const dc = pc.createDataChannel('teleport-files', { ordered: true, maxRetransmits: 30 });
+        // Reliable + ordered channel for file transfer integrity.
+        const dc = pc.createDataChannel('teleport-files', { ordered: true });
         this.setupDataChannel(dc, targetPeerId);
 
         const offer = await pc.createOffer();
@@ -1090,7 +1631,13 @@ class TeleportWebRTC {
 
     async handleDataChannelMessage(peerId, data) {
         if (typeof data === 'string') {
-            const msg = JSON.parse(data);
+            let msg;
+            try {
+                msg = JSON.parse(data);
+            } catch (e) {
+                console.warn('[DataChannel] Dropping non-JSON control message:', e.message);
+                return;
+            }
 
             if (msg.type === 'file-start') {
                 // Strictly validate all fields before accepting the transfer
@@ -1122,33 +1669,54 @@ class TeleportWebRTC {
                     }
                 }
 
+                const expectedSha256 = this.normalizeSha256(msg.sha256);
+                if (typeof msg.sha256 !== 'undefined' && !expectedSha256) {
+                    console.error('[FileTransfer] Rejected file-start: invalid SHA-256 format');
+                    const dc = this.dataChannels.get(peerId);
+                    if (dc?.readyState === 'open') {
+                        dc.send(JSON.stringify({
+                            type: 'transfer-cancel',
+                            transferId: msg.transferId,
+                            reason: 'invalid-sha256'
+                        }));
+                    }
+                    return;
+                }
+
+                // Resume safety rule:
+                // resume from non-zero offset is only allowed when we can prove persisted bytes exist.
+                // Current browser sinks are not durably resumable, so we restart safely from byte 0.
+                let resumeOffset = 0;
+                const resumeState = await this.getResumeState(msg.transferId);
+                if (resumeState &&
+                    typeof resumeState.receivedBytes === 'number' &&
+                    resumeState.receivedBytes > 0 &&
+                    resumeState.receivedBytes < msg.size) {
+                    if (resumeState.resumeCapable === true) {
+                        resumeOffset = Math.floor(resumeState.receivedBytes);
+                        console.log(`[Resume] Safe resume approved for ${safeFilename}: ${resumeOffset}/${msg.size}`);
+                    } else {
+                        console.log(`[Resume] Restarting ${safeFilename} from byte 0 (partial state is not durably resumable)`);
+                    }
+                }
+
                 // Initialize transfer state
                 const transferState = {
-                    metadata: { ...msg, filename: safeFilename, relativePath: safeRelativePath },
+                    metadata: {
+                        ...msg,
+                        filename: safeFilename,
+                        relativePath: safeRelativePath,
+                        sha256: expectedSha256
+                    },
                     chunks: [], // Only used for small files
-                    received: 0,
+                    received: resumeOffset,
                     startTime: Date.now(),
                     useStreaming: msg.size > this.STREAMING_THRESHOLD,
                     writer: null,
-                    fileHandle: null
+                    fileHandle: null,
+                    expectedSha256,
+                    hasher: new IncrementalSHA256()
                 };
-
-                // Check for an existing resume state in IndexedDB
-                this.getResumeState(msg.transferId).then(resumeState => {
-                    if (resumeState && resumeState.receivedBytes > 0 && resumeState.receivedBytes < msg.size) {
-                        console.log(`[Resume] Found partial state for ${safeFilename}: ${resumeState.receivedBytes}/${msg.size} bytes`);
-                        // Notify sender to resume from the saved offset
-                        const dc = this.dataChannels.get(peerId);
-                        if (dc?.readyState === 'open') {
-                            dc.send(JSON.stringify({
-                                type: 'resume-request',
-                                transferId: msg.transferId,
-                                resumeOffset: resumeState.receivedBytes
-                            }));
-                        }
-                        transferState.received = resumeState.receivedBytes;
-                    }
-                });
 
                 // For large files, try to use File System Access API
                 if (transferState.useStreaming && this.useFileSystemAPI) {
@@ -1188,6 +1756,28 @@ class TeleportWebRTC {
                     }
                 }
 
+                // Avoid browser crashes when a very large file has no streaming sink.
+                if (!transferState.useStreaming && msg.size > this.MAX_IN_MEMORY_RECEIVE_SIZE) {
+                    const dc = this.dataChannels.get(peerId);
+                    if (dc?.readyState === 'open') {
+                        dc.send(JSON.stringify({
+                            type: 'transfer-cancel',
+                            transferId: msg.transferId,
+                            reason: 'receiver-memory-limit'
+                        }));
+                    }
+
+                    const errorMsg = `File too large for in-memory receive on this browser (${this.formatSize(msg.size)}). Use a browser with File System Access or StreamSaver support.`;
+                    if (this.onTransferError) {
+                        this.onTransferError({
+                            transferId: msg.transferId,
+                            filename: safeFilename,
+                            error: errorMsg
+                        });
+                    }
+                    return;
+                }
+
                 this.incomingChunks.set(msg.transferId, transferState);
                 this.activeTransfers.set(msg.transferId, {
                     paused: false,
@@ -1196,28 +1786,73 @@ class TeleportWebRTC {
                     bytesTransferred: 0,
                     fileIndex: msg.fileIndex || 0,
                     totalFiles: msg.totalFiles || 1,
-                    relativePath: safeRelativePath
+                    peerId,
+                    relativePath: safeRelativePath,
+                    resumeOffset,
+                    resumeCapable: false
                 });
 
                 // Persist initial resume state to IndexedDB
                 this.saveResumeState(msg.transferId, {
                     filename: transferState.metadata.filename,
                     totalBytes: msg.size,
-                    receivedBytes: 0,
+                    receivedBytes: resumeOffset,
+                    sha256: expectedSha256,
+                    resumeCapable: false,
                     peerId
                 });
+
+                // Sender must wait for explicit resume decision to avoid race conditions.
+                const dc = this.dataChannels.get(peerId);
+                if (dc?.readyState === 'open') {
+                    dc.send(JSON.stringify({
+                        type: 'resume-ready',
+                        transferId: msg.transferId,
+                        resumeOffset,
+                        resumeCapable: false
+                    }));
+
+                    // Legacy compatibility with older senders that only understand resume-request.
+                    if (resumeOffset > 0) {
+                        dc.send(JSON.stringify({
+                            type: 'resume-request',
+                            transferId: msg.transferId,
+                            resumeOffset
+                        }));
+                    }
+                }
             } else if (msg.type === 'file-end') {
                 this.assembleFile(msg.transferId);
+            } else if (msg.type === 'resume-ready') {
+                // Receiver is ready and has chosen a deterministic resume offset.
+                const state = this.activeTransfers.get(msg.transferId);
+                if (state) {
+                    const offset = Number.isFinite(msg.resumeOffset) ? Math.max(0, msg.resumeOffset) : 0;
+                    state.resumeOffset = offset;
+                    state.resumeReady = true;
+                    state.resumeCapable = !!msg.resumeCapable;
+                    console.log(`[Resume] Sender: resume-ready offset ${offset} for ${msg.transferId}`);
+                }
             } else if (msg.type === 'resume-request') {
                 // Receiver is requesting a resume from a given offset.
                 // We need to handle this on the SENDER side — tell sendFile() to seek.
                 const state = this.activeTransfers.get(msg.transferId);
                 if (state) {
-                    state.resumeOffset = typeof msg.resumeOffset === 'number' ? msg.resumeOffset : 0;
+                    state.resumeOffset = Number.isFinite(msg.resumeOffset) ? Math.max(0, msg.resumeOffset) : 0;
+                    state.resumeReady = true;
+                    state.resumeCapable = true; // legacy peers only send this signal when they intend resume support
                     console.log(`[Resume] Sender: receiver requested offset ${state.resumeOffset} for ${msg.transferId}`);
                 }
+            } else if (msg.type === 'file-verified') {
+                const state = this.activeTransfers.get(msg.transferId);
+                if (state) {
+                    state.verifyReady = true;
+                    state.verifyOk = !!msg.ok;
+                    state.verifyReason = typeof msg.reason === 'string' ? msg.reason : '';
+                    state.verifiedSha256 = this.normalizeSha256(msg.sha256);
+                }
             } else if (msg.type === 'transfer-cancel') {
-                this.handleTransferCancel(msg.transferId);
+                this.handleTransferCancel(msg.transferId, msg.reason);
             } else if (msg.type === 'transfer-pause') {
                 this.handleTransferPause(msg.transferId, msg.paused);
             }
@@ -1245,12 +1880,52 @@ class TeleportWebRTC {
                 transfer.received += chunkData.byteLength;
                 state.bytesTransferred = transfer.received;
 
+                if (transfer.hasher) {
+                    transfer.hasher.update(chunkData);
+                }
+
+                if (Number.isFinite(transfer.metadata.size) && transfer.received > transfer.metadata.size) {
+                    if (state?.peerId) {
+                        this.sendFileVerificationAck(
+                            state.peerId,
+                            transferId,
+                            false,
+                            'Received more bytes than declared file size.',
+                            transfer.hasher ? transfer.hasher.hex() : null
+                        );
+                    }
+
+                    const dc = this.dataChannels.get(state?.peerId);
+                    if (dc?.readyState === 'open') {
+                        dc.send(JSON.stringify({
+                            type: 'transfer-cancel',
+                            transferId,
+                            reason: 'size-overflow'
+                        }));
+                    }
+
+                    this.deleteResumeState(transferId);
+                    this.incomingChunks.delete(transferId);
+                    this.activeTransfers.delete(transferId);
+
+                    if (this.onTransferError) {
+                        this.onTransferError({
+                            transferId,
+                            filename: transfer.metadata.filename,
+                            error: 'Received more bytes than declared file size. Transfer aborted.'
+                        });
+                    }
+                    return;
+                }
+
                 // Keep resume state up-to-date (throttled: every 64 chunks)
                 if (transfer.received % (this.CHUNK_SIZE * 64) < this.CHUNK_SIZE) {
                     this.saveResumeState(transferId, {
                         filename: transfer.metadata.filename,
                         totalBytes: transfer.metadata.size,
                         receivedBytes: transfer.received,
+                        sha256: transfer.metadata.sha256 || null,
+                        resumeCapable: false,
                         peerId
                     });
                 }
@@ -1284,23 +1959,102 @@ class TeleportWebRTC {
         if (!transfer || state?.cancelled) {
             // Clean up streaming writer if exists
             if (transfer?.writer) {
-                try { await transfer.writer.close(); } catch (e) { }
+                try {
+                    if (typeof transfer.writer.abort === 'function') {
+                        await transfer.writer.abort();
+                    } else if (typeof transfer.writer.close === 'function') {
+                        await transfer.writer.close();
+                    }
+                } catch (e) { }
             }
             this.incomingChunks.delete(transferId);
             this.activeTransfers.delete(transferId);
             return;
         }
 
+        const expectedSize = Number.isFinite(transfer.metadata?.size) ? transfer.metadata.size : null;
+        const expectedSha256 = this.normalizeSha256(transfer.metadata?.sha256);
+        const actualSha256 = transfer.hasher ? transfer.hasher.hex() : null;
         let totalSize = transfer.received;
+
+        const abortWritable = async () => {
+            if (!transfer.writer) return;
+            try {
+                if (typeof transfer.writer.abort === 'function') {
+                    await transfer.writer.abort();
+                    return;
+                }
+            } catch (e) {
+                // Fall through to close attempt.
+            }
+
+            try {
+                if (typeof transfer.writer.close === 'function') {
+                    await transfer.writer.close();
+                }
+            } catch (e) { }
+        };
+
+        const failTransfer = async (errorMessage) => {
+            if (state?.peerId) {
+                this.sendFileVerificationAck(
+                    state.peerId,
+                    transferId,
+                    false,
+                    errorMessage,
+                    actualSha256
+                );
+            }
+
+            await abortWritable();
+
+            this.saveTransferToHistory({
+                filename: transfer.metadata.filename,
+                size: totalSize,
+                direction: 'received',
+                success: false,
+                sha256: actualSha256 || null
+            });
+
+            this.deleteResumeState(transferId);
+            if (this.onTransferError) {
+                this.onTransferError({
+                    transferId,
+                    filename: transfer.metadata.filename,
+                    error: errorMessage
+                });
+            }
+
+            this.incomingChunks.delete(transferId);
+            this.activeTransfers.delete(transferId);
+        };
+
+        const getIntegrityError = () => {
+            if (expectedSize !== null && totalSize !== expectedSize) {
+                return `Received size mismatch (${this.formatSize(totalSize)} / ${this.formatSize(expectedSize)}).`;
+            }
+            if (expectedSha256 && actualSha256 !== expectedSha256) {
+                const expectedShort = `${expectedSha256.slice(0, 12)}...`;
+                const actualShort = actualSha256 ? `${actualSha256.slice(0, 12)}...` : 'none';
+                return `SHA-256 verification failed (${actualShort} != ${expectedShort}).`;
+            }
+            return null;
+        };
 
         // Handle streaming vs memory buffer
         if (transfer.useStreaming && transfer.writer) {
-            // File was streamed directly to disk
+            const integrityError = getIntegrityError();
+            if (integrityError) {
+                await failTransfer(integrityError);
+                return;
+            }
+
             try {
                 await transfer.writer.close();
                 console.log('[FileTransfer] Streaming complete, file saved to disk');
             } catch (e) {
-                console.error('[FileTransfer] Error closing stream:', e);
+                await failTransfer(`Could not finalize streamed file: ${e.message || e}`);
+                return;
             }
         } else {
             // Memory buffer approach - assemble and download
@@ -1311,6 +2065,12 @@ class TeleportWebRTC {
             for (const chunk of transfer.chunks) {
                 combined.set(chunk, offset);
                 offset += chunk.byteLength;
+            }
+
+            const integrityError = getIntegrityError();
+            if (integrityError) {
+                await failTransfer(integrityError);
+                return;
             }
 
             const blob = new Blob([combined], { type: transfer.metadata.mimeType || 'application/octet-stream' });
@@ -1338,8 +2098,20 @@ class TeleportWebRTC {
             filename: transfer.metadata.filename,
             size: totalSize,
             direction: 'received',
-            success: true
+            success: true,
+            sha256: actualSha256 || null,
+            sha256Verified: !!expectedSha256
         });
+
+        if (state?.peerId) {
+            this.sendFileVerificationAck(
+                state.peerId,
+                transferId,
+                true,
+                '',
+                actualSha256
+            );
+        }
 
         // Remove the persisted resume state — transfer is complete
         this.deleteResumeState(transferId);
@@ -1349,6 +2121,8 @@ class TeleportWebRTC {
                 transferId,
                 filename: transfer.metadata.filename,
                 size: totalSize,
+                sha256: actualSha256 || null,
+                sha256Verified: !!expectedSha256,
                 success: true,
                 fileIndex: state?.fileIndex,
                 totalFiles: state?.totalFiles
@@ -1383,18 +2157,32 @@ class TeleportWebRTC {
             state.cancelled = true;
             this.dataChannels.forEach(dc => {
                 if (dc.readyState === 'open') {
-                    dc.send(JSON.stringify({ type: 'transfer-cancel', transferId }));
+                    dc.send(JSON.stringify({
+                        type: 'transfer-cancel',
+                        transferId,
+                        reason: 'manual-cancel'
+                    }));
                 }
             });
         }
     }
 
-    handleTransferCancel(transferId) {
+    handleTransferCancel(transferId, reason = 'remote-cancel') {
         const state = this.activeTransfers.get(transferId);
         if (state) state.cancelled = true;
         this.incomingChunks.delete(transferId);
+
+        const reasonText = {
+            'validation-failed': 'Receiver rejected file metadata validation.',
+            'invalid-sha256': 'Receiver rejected file integrity metadata (invalid SHA-256).',
+            'receiver-memory-limit': 'Receiver cannot store this file size in memory on the current browser.',
+            'size-overflow': 'Receiver detected byte overflow and aborted transfer.',
+            'remote-cancel': 'Cancelled by remote peer.',
+            'manual-cancel': 'Transfer cancelled manually.'
+        }[reason] || 'Transfer cancelled by remote peer.';
+
         if (this.onTransferError) {
-            this.onTransferError({ transferId, error: 'Cancelled by sender' });
+            this.onTransferError({ transferId, error: reasonText });
         }
     }
 
@@ -1450,6 +2238,17 @@ class TeleportWebRTC {
         return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
     }
 
+    getRelayReasonMessage(reason) {
+        return {
+            'sha256-mismatch': 'Relay receiver rejected file due to SHA-256 mismatch.',
+            'size-mismatch': 'Relay receiver rejected file due to size mismatch.',
+            'size-overflow': 'Relay transfer exceeded declared file size.',
+            'invalid-sha256': 'Relay receiver rejected invalid SHA-256 metadata.',
+            'manual-cancel': 'Relay transfer was cancelled manually.',
+            'receiver-memory-limit': 'Relay receiver cannot store this file size in memory on the current browser.'
+        }[reason] || null;
+    }
+
     // ==================== FOLDER HANDLING ====================
 
     async getFilesWithStructure(items) {
@@ -1466,14 +2265,22 @@ class TeleportWebRTC {
                 });
             } else if (entry.isDirectory) {
                 const dirReader = entry.createReader();
-                return new Promise((resolve) => {
-                    dirReader.readEntries(async (entries) => {
-                        for (const e of entries) {
-                            await traverseEntry(e, path + entry.name + '/');
-                        }
-                        resolve();
+                const readEntriesBatch = () => {
+                    return new Promise((resolve, reject) => {
+                        dirReader.readEntries(resolve, reject);
                     });
-                });
+                };
+
+                const allEntries = [];
+                while (true) {
+                    const batch = await readEntriesBatch();
+                    if (!batch.length) break;
+                    allEntries.push(...batch);
+                }
+
+                for (const e of allEntries) {
+                    await traverseEntry(e, path + entry.name + '/');
+                }
             }
         }
 
@@ -1507,22 +2314,73 @@ class TeleportWebRTC {
             if (!proceed) return;
         }
 
-        await this.createConnection(targetPeerId);
-        await this.waitForDataChannel(targetPeerId);
+        // BUG FIX (Bug C3): Desktop peers (fingerprint:null, platform:'desktop') have
+        // no WebRTC stack. Previously we always called createConnection() + waitForDataChannel()
+        // which would spin for 60 seconds before failing. Now we detect relayOnly peers and
+        // route directly to the server-relay path, matching what the desktop expects.
+        const targetPeer = this.peerList.find(p => p.id === targetPeerId);
+        const isRelayPeer = targetPeer?.relayOnly === true;
 
         const fileInfos = Array.from(files).map(f => ({
             name: f.name,
             size: f.size,
-            type: f.type,
+            type: f.type || 'application/octet-stream',
             relativePath: f.relativePath || f.webkitRelativePath || ''
         }));
 
+        // Send file-request over signaling (works for both P2P and relay paths)
         this.ws.send(JSON.stringify({
             type: 'file-request',
             to: targetPeerId,
             files: fileInfos,
+            fromName: this.deviceName,
             fingerprint: this.peerFingerprint
         }));
+
+        if (isRelayPeer) {
+            // Desktop peer — relay path: wait for file-response then stream via relay
+            return new Promise((resolve, reject) => {
+                const handleResponse = (accepted, fromId) => {
+                    if (fromId !== targetPeerId) return false; // not our response
+                    if (!accepted) {
+                        reject(new Error('Desktop peer rejected the file transfer'));
+                        return true;
+                    }
+                    // Send each file via relay sequentially
+                    (async () => {
+                        try {
+                            for (let i = 0; i < files.length; i++) {
+                                const file = files[i];
+                                await this.sendFileViaRelay(targetPeerId, file, i, files.length);
+                            }
+                            resolve();
+                        } catch (err) {
+                            reject(err);
+                        }
+                    })();
+                    return true;
+                };
+
+                // Intercept the file-response signaling message
+                const origHandler = this.handleFileResponse.bind(this);
+                this.handleFileResponse = (fromId, accepted) => {
+                    if (handleResponse(accepted, fromId)) {
+                        this.handleFileResponse = origHandler; // restore
+                    } else {
+                        origHandler(fromId, accepted);
+                    }
+                };
+
+                setTimeout(() => {
+                    this.handleFileResponse = origHandler;
+                    reject(new Error('Desktop peer did not respond to file request (timeout)'));
+                }, 15000);
+            });
+        }
+
+        // Web/P2P peer — original flow
+        await this.createConnection(targetPeerId);
+        await this.waitForDataChannel(targetPeerId);
 
         return new Promise((resolve, reject) => {
             this.pendingFiles.set(targetPeerId, { files, resolve, reject });
@@ -1555,6 +2413,138 @@ class TeleportWebRTC {
             };
             check();
         });
+    }
+
+    waitForResumeReady(transferId, timeout = this.RESUME_READY_TIMEOUT) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+
+            const check = () => {
+                const state = this.activeTransfers.get(transferId);
+                if (!state) {
+                    reject(new Error('Transfer state missing during resume negotiation'));
+                    return;
+                }
+                if (state.cancelled) {
+                    reject(new Error('Transfer cancelled during resume negotiation'));
+                    return;
+                }
+                if (state.resumeReady) {
+                    resolve(state.resumeOffset || 0);
+                    return;
+                }
+                if (Date.now() - startTime > timeout) {
+                    console.warn(`[Resume] No explicit resume-ready for ${transferId} after ${timeout}ms; restarting from 0`);
+                    state.resumeReady = true;
+                    state.resumeOffset = 0;
+                    resolve(0);
+                    return;
+                }
+                setTimeout(check, 25);
+            };
+
+            check();
+        });
+    }
+
+    waitForFileVerification(transferId, timeout = 12000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+
+            const check = () => {
+                const state = this.activeTransfers.get(transferId);
+                if (!state) {
+                    reject(new Error('Transfer state missing during verification wait'));
+                    return;
+                }
+                if (state.cancelled) {
+                    reject(new Error('Transfer cancelled before verification'));
+                    return;
+                }
+                if (state.verifyReady) {
+                    resolve({
+                        supported: true,
+                        ok: !!state.verifyOk,
+                        reason: state.verifyReason || '',
+                        sha256: state.verifiedSha256 || null
+                    });
+                    return;
+                }
+                if (Date.now() - startTime > timeout) {
+                    // Older/third-party peers might not implement explicit verification ACK.
+                    resolve({ supported: false, ok: true, reason: '', sha256: null });
+                    return;
+                }
+                setTimeout(check, 25);
+            };
+
+            check();
+        });
+    }
+
+    waitForRelayVerification(transferId, timeout = this.RELAY_VERIFICATION_TIMEOUT) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+
+            const check = () => {
+                const state = this.activeTransfers.get(transferId);
+                if (!state) {
+                    reject(new Error('Relay transfer state missing during verification wait'));
+                    return;
+                }
+
+                if (state.relayVerifyReady) {
+                    resolve({
+                        supported: true,
+                        ok: !!state.relayVerifyOk,
+                        reason: state.relayVerifyReason || '',
+                        sha256: state.relayVerifiedSha256 || null
+                    });
+                    return;
+                }
+
+                if (state.cancelled) {
+                    reject(new Error(state.cancelReason || 'Relay transfer cancelled before verification'));
+                    return;
+                }
+
+                if (Date.now() - startTime > timeout) {
+                    // Older peers may not emit relay verification acknowledgements.
+                    resolve({ supported: false, ok: true, reason: '', sha256: null });
+                    return;
+                }
+
+                setTimeout(check, 25);
+            };
+
+            check();
+        });
+    }
+
+    sendFileVerificationAck(peerId, transferId, ok, reason = '', sha256 = null) {
+        const dc = this.dataChannels.get(peerId);
+        if (dc?.readyState === 'open') {
+            dc.send(JSON.stringify({
+                type: 'file-verified',
+                transferId,
+                ok: !!ok,
+                reason: reason || '',
+                sha256: this.normalizeSha256(sha256)
+            }));
+        }
+    }
+
+    sendRelayVerificationAck(peerId, transferId, ok, reason = '', sha256 = null) {
+        if (!peerId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+        this.ws.send(JSON.stringify({
+            type: 'relay-verified',
+            to: peerId,
+            transferId,
+            ok: !!ok,
+            reason: reason || '',
+            sha256: this.normalizeSha256(sha256)
+        }));
     }
 
     handleFileResponse(fromPeerId, accepted) {
@@ -1626,7 +2616,7 @@ class TeleportWebRTC {
         console.log('[FileTransfer] Starting to send', totalFiles, 'files...');
         for (let i = 0; i < files.length; i++) {
             console.log('[FileTransfer] Sending file', i + 1, 'of', totalFiles, ':', files[i].name);
-            await this.sendFile(dc, files[i], i, totalFiles); // no retry loop — DataChannel (SCTP) is already reliable
+            await this.sendFile(dc, files[i], i, totalFiles, targetPeerId); // no retry loop — DataChannel (SCTP) is already reliable
         }
         console.log('[FileTransfer] All files sent!');
     }
@@ -1649,8 +2639,9 @@ class TeleportWebRTC {
     }
 
     async sendFileViaRelay(targetPeerId, file, fileIndex = 0, totalFiles = 1) {
-        const transferId = crypto.randomUUID();
+        const transferId = this.generateTransferId();
         const startTime = Date.now();
+        const fileSha256 = await this.computeFileSha256(file);
 
         console.log(`[Relay] Sending file: ${file.name} (${file.size} bytes)`);
 
@@ -1660,9 +2651,15 @@ class TeleportWebRTC {
             cancelled: false,
             startTime,
             bytesTransferred: 0,
+            filename: file.name,
+            peerId: targetPeerId,
             fileIndex,
             totalFiles,
-            isRelay: true
+            isRelay: true,
+            relayVerifyReady: false,
+            relayVerifyOk: false,
+            relayVerifyReason: '',
+            sha256: fileSha256
         });
 
         // Send start message
@@ -1673,6 +2670,7 @@ class TeleportWebRTC {
             filename: file.name,
             size: file.size,
             mimeType: file.type || 'application/octet-stream',
+            sha256: fileSha256,
             fileIndex,
             totalFiles
         }));
@@ -1689,9 +2687,14 @@ class TeleportWebRTC {
                     this.ws.send(JSON.stringify({
                         type: 'relay-cancel',
                         to: targetPeerId,
-                        transferId
+                        transferId,
+                        reason: 'manual-cancel'
                     }));
                     throw new Error('Transfer cancelled');
+                }
+
+                while (state?.paused) {
+                    await new Promise(r => setTimeout(r, 100));
                 }
 
                 const { done, value } = await reader.read();
@@ -1703,6 +2706,12 @@ class TeleportWebRTC {
 
                     // Convert to base64 for JSON transport
                     const base64 = btoa(String.fromCharCode(...chunk));
+
+                    await this.throttle(base64.length);
+
+                    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                        throw new Error('WebSocket disconnected during relay transfer');
+                    }
 
                     this.ws.send(JSON.stringify({
                         type: 'relay-chunk',
@@ -1722,11 +2731,11 @@ class TeleportWebRTC {
                         this.onTransferProgress({
                             transferId,
                             filename: file.name,
-                            progress: Math.round((offset / file.size) * 100),
+                            progress: file.size > 0 ? (offset / file.size) : 1,
                             sent: offset,
                             total: file.size,
-                            speed: Math.round(speed),
-                            eta: speed > 0 ? Math.round((file.size - offset) / speed) : 0,
+                            speed,
+                            eta: speed > 0 ? ((file.size - offset) / speed) : 0,
                             isRelay: true
                         });
                     }
@@ -1743,22 +2752,67 @@ class TeleportWebRTC {
                 transferId
             }));
 
+            const verification = await this.waitForRelayVerification(transferId);
+            if (verification.supported && !verification.ok) {
+                throw new Error(this.getRelayReasonMessage(verification.reason) || verification.reason || 'Relay receiver integrity verification failed');
+            }
+
             console.log(`[Relay] File sent: ${file.name}`);
+
+            this.saveTransferToHistory({
+                filename: file.name,
+                size: file.size,
+                direction: 'sent',
+                success: true,
+                sha256: fileSha256,
+                sha256Verified: verification.supported ? true : false
+            });
+
+            if (this.onTransferComplete) {
+                this.onTransferComplete({
+                    transferId,
+                    filename: file.name,
+                    size: file.size,
+                    sha256: fileSha256,
+                    sha256Verified: verification.supported ? true : false,
+                    success: true,
+                    fileIndex,
+                    totalFiles,
+                    isRelay: true
+                });
+            }
 
             // Cleanup
             this.activeTransfers.delete(transferId);
 
         } catch (error) {
             this.activeTransfers.delete(transferId);
+
+            this.saveTransferToHistory({
+                filename: file.name,
+                size: file.size,
+                direction: 'sent',
+                success: false,
+                sha256: fileSha256
+            });
+
+            if (this.onTransferError) {
+                this.onTransferError({
+                    transferId,
+                    filename: file.name,
+                    error: error.message || 'Relay transfer failed'
+                });
+            }
             throw error;
         }
     }
 
-    async sendFile(dc, file, fileIndex = 0, totalFiles = 1) {
-        const transferId = crypto.randomUUID();
+    async sendFile(dc, file, fileIndex = 0, totalFiles = 1, targetPeerId = null) {
+        const transferId = this.generateTransferId();
         const startTime = Date.now();
         const relativePath = file.relativePath || file.webkitRelativePath || '';
         let fileSent = false;
+        const fileSha256 = await this.computeFileSha256(file);
 
         this.activeTransfers.set(transferId, {
             paused: false,
@@ -1767,7 +2821,11 @@ class TeleportWebRTC {
             bytesTransferred: 0,
             fileIndex,
             totalFiles,
-            resumeOffset: 0  // will be set if receiver sends resume-request
+            peerId: targetPeerId,
+            resumeOffset: 0,
+            resumeReady: false,
+            resumeCapable: false,
+            sha256: fileSha256
         });
 
         try {
@@ -1777,16 +2835,19 @@ class TeleportWebRTC {
                 filename: file.name,
                 size: file.size,
                 mimeType: file.type,
+                sha256: fileSha256,
                 fileIndex,
                 totalFiles,
                 relativePath
             }));
 
-            // Wait briefly for any resume-request from the receiver before streaming
-            await new Promise(r => setTimeout(r, 80));
-
-            const state = this.activeTransfers.get(transferId);
-            const skipBytes = (state?.resumeOffset || 0);
+            // Wait for deterministic resume decision from receiver.
+            await this.waitForResumeReady(transferId);
+            const negotiatedState = this.activeTransfers.get(transferId);
+            const requestedOffset = negotiatedState?.resumeOffset || 0;
+            const skipBytes = negotiatedState?.resumeCapable
+                ? Math.min(file.size, Math.max(0, requestedOffset))
+                : 0;
 
             // Use slice to skip already-received bytes (resume support)
             const fileSlice = skipBytes > 0 ? file.slice(skipBytes) : file;
@@ -1848,6 +2909,12 @@ class TeleportWebRTC {
             }
 
             dc.send(JSON.stringify({ type: 'file-end', transferId }));
+
+            const verification = await this.waitForFileVerification(transferId);
+            if (verification.supported && !verification.ok) {
+                throw new Error(verification.reason || 'Receiver integrity verification failed');
+            }
+
             fileSent = true;
 
             this.saveTransferToHistory({
@@ -1862,6 +2929,8 @@ class TeleportWebRTC {
                     transferId,
                     filename: file.name,
                     size: file.size,
+                    sha256: fileSha256,
+                    sha256Verified: true,
                     success: true,
                     fileIndex,
                     totalFiles
@@ -1906,7 +2975,49 @@ class TeleportWebRTC {
         try {
             const parsed = JSON.parse(data);
             if (parsed.server && parsed.server !== this.serverUrl) {
-                await this.connectToManualIP(parsed.server.replace('ws://', '').split(':')[0]);
+                let host = null;
+                let port = 3000;
+
+                if (typeof parsed.server === 'string' && parsed.server.trim()) {
+                    const rawServer = parsed.server.trim();
+                    const normalizedServer = /^(ws|wss|http|https):\/\//i.test(rawServer)
+                        ? rawServer
+                        : `ws://${rawServer}`;
+
+                    try {
+                        const u = new URL(normalizedServer);
+                        host = u.hostname;
+                        if (u.port) {
+                            const parsedPort = parseInt(u.port, 10);
+                            if (Number.isFinite(parsedPort) && parsedPort > 0) {
+                                port = parsedPort;
+                            }
+                        }
+                    } catch (e) {
+                        // Fallback for host[:port] without a parseable URL structure
+                        const hostPort = rawServer
+                            .replace(/^\w+:\/\//, '')
+                            .split('/')[0];
+
+                        if (hostPort.startsWith('[')) {
+                            const idx = hostPort.indexOf(']');
+                            host = idx > 0 ? hostPort.slice(1, idx) : null;
+                        } else {
+                            const parts = hostPort.split(':');
+                            host = parts[0] || null;
+                            if (parts[1]) {
+                                const parsedPort = parseInt(parts[1], 10);
+                                if (Number.isFinite(parsedPort) && parsedPort > 0) {
+                                    port = parsedPort;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (host) {
+                    await this.connectToManualIP(host, port);
+                }
             }
             if (parsed.peerId) {
                 return this.createConnection(parsed.peerId);
@@ -1927,6 +3038,32 @@ class TeleportWebRTC {
     getTheme() { return this.loadSetting('teleport-theme') || 'dark'; }
     setTheme(theme) { this.saveSetting('teleport-theme', theme); }
 
+    generateTransferId() {
+        const cryptoObj = (typeof crypto !== 'undefined') ? crypto : null;
+
+        if (cryptoObj && typeof cryptoObj.randomUUID === 'function') {
+            return cryptoObj.randomUUID();
+        }
+
+        const asUuid = (hex32) => {
+            return `${hex32.slice(0, 8)}-${hex32.slice(8, 12)}-${hex32.slice(12, 16)}-${hex32.slice(16, 20)}-${hex32.slice(20, 32)}`;
+        };
+
+        if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+            const random = cryptoObj.getRandomValues(new Uint8Array(16));
+            const hex = Array.from(random)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+            return asUuid(hex);
+        }
+
+        let pseudoHex = '';
+        while (pseudoHex.length < 32) {
+            pseudoHex += Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');
+        }
+        return asUuid(pseudoHex.slice(0, 32));
+    }
+
     getFileType(filename) {
         const ext = filename.split('.').pop()?.toLowerCase();
         const types = {
@@ -1942,6 +3079,169 @@ class TeleportWebRTC {
             'exe': 'executable', 'app': 'executable', 'dmg': 'executable', 'deb': 'executable', 'rpm': 'executable', 'msi': 'executable'
         };
         return types[ext] || 'file';
+    }
+}
+
+// ==================== INCREMENTAL SHA-256 ====================
+
+class IncrementalSHA256 {
+    constructor() {
+        this.state = new Uint32Array([
+            0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+            0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        ]);
+        this.buffer = new Uint8Array(64);
+        this.bufferLength = 0;
+        this.bytesHashed = 0;
+        this.finished = false;
+        this.words = new Uint32Array(64);
+    }
+
+    static ROTR(x, n) {
+        return (x >>> n) | (x << (32 - n));
+    }
+
+    update(data) {
+        if (this.finished) {
+            throw new Error('Cannot update SHA-256 after digest()');
+        }
+
+        if (!(data instanceof Uint8Array)) {
+            data = new Uint8Array(data);
+        }
+
+        let position = 0;
+        this.bytesHashed += data.length;
+
+        while (position < data.length) {
+            const take = Math.min(64 - this.bufferLength, data.length - position);
+            this.buffer.set(data.subarray(position, position + take), this.bufferLength);
+            this.bufferLength += take;
+            position += take;
+
+            if (this.bufferLength === 64) {
+                this.processBlock(this.buffer);
+                this.bufferLength = 0;
+            }
+        }
+    }
+
+    processBlock(chunk) {
+        const K = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ];
+
+        const W = this.words;
+        for (let i = 0; i < 16; i++) {
+            const j = i * 4;
+            W[i] = ((chunk[j] << 24) | (chunk[j + 1] << 16) | (chunk[j + 2] << 8) | chunk[j + 3]) >>> 0;
+        }
+
+        for (let i = 16; i < 64; i++) {
+            const s0 = (IncrementalSHA256.ROTR(W[i - 15], 7) ^ IncrementalSHA256.ROTR(W[i - 15], 18) ^ (W[i - 15] >>> 3)) >>> 0;
+            const s1 = (IncrementalSHA256.ROTR(W[i - 2], 17) ^ IncrementalSHA256.ROTR(W[i - 2], 19) ^ (W[i - 2] >>> 10)) >>> 0;
+            W[i] = (W[i - 16] + s0 + W[i - 7] + s1) >>> 0;
+        }
+
+        let a = this.state[0];
+        let b = this.state[1];
+        let c = this.state[2];
+        let d = this.state[3];
+        let e = this.state[4];
+        let f = this.state[5];
+        let g = this.state[6];
+        let h = this.state[7];
+
+        for (let i = 0; i < 64; i++) {
+            const S1 = (IncrementalSHA256.ROTR(e, 6) ^ IncrementalSHA256.ROTR(e, 11) ^ IncrementalSHA256.ROTR(e, 25)) >>> 0;
+            const ch = ((e & f) ^ (~e & g)) >>> 0;
+            const temp1 = (h + S1 + ch + K[i] + W[i]) >>> 0;
+            const S0 = (IncrementalSHA256.ROTR(a, 2) ^ IncrementalSHA256.ROTR(a, 13) ^ IncrementalSHA256.ROTR(a, 22)) >>> 0;
+            const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+            const temp2 = (S0 + maj) >>> 0;
+
+            h = g;
+            g = f;
+            f = e;
+            e = (d + temp1) >>> 0;
+            d = c;
+            c = b;
+            b = a;
+            a = (temp1 + temp2) >>> 0;
+        }
+
+        this.state[0] = (this.state[0] + a) >>> 0;
+        this.state[1] = (this.state[1] + b) >>> 0;
+        this.state[2] = (this.state[2] + c) >>> 0;
+        this.state[3] = (this.state[3] + d) >>> 0;
+        this.state[4] = (this.state[4] + e) >>> 0;
+        this.state[5] = (this.state[5] + f) >>> 0;
+        this.state[6] = (this.state[6] + g) >>> 0;
+        this.state[7] = (this.state[7] + h) >>> 0;
+    }
+
+    digest() {
+        if (this.finished) {
+            return this.toBytes();
+        }
+
+        const bitsHashed = this.bytesHashed * 8;
+        this.buffer[this.bufferLength++] = 0x80;
+
+        if (this.bufferLength > 56) {
+            while (this.bufferLength < 64) {
+                this.buffer[this.bufferLength++] = 0;
+            }
+            this.processBlock(this.buffer);
+            this.bufferLength = 0;
+        }
+
+        while (this.bufferLength < 56) {
+            this.buffer[this.bufferLength++] = 0;
+        }
+
+        const high = Math.floor(bitsHashed / 0x100000000);
+        const low = bitsHashed >>> 0;
+        this.buffer[56] = (high >>> 24) & 0xff;
+        this.buffer[57] = (high >>> 16) & 0xff;
+        this.buffer[58] = (high >>> 8) & 0xff;
+        this.buffer[59] = high & 0xff;
+        this.buffer[60] = (low >>> 24) & 0xff;
+        this.buffer[61] = (low >>> 16) & 0xff;
+        this.buffer[62] = (low >>> 8) & 0xff;
+        this.buffer[63] = low & 0xff;
+
+        this.processBlock(this.buffer);
+        this.bufferLength = 0;
+        this.finished = true;
+
+        return this.toBytes();
+    }
+
+    toBytes() {
+        const out = new Uint8Array(32);
+        for (let i = 0; i < 8; i++) {
+            const v = this.state[i];
+            out[i * 4] = (v >>> 24) & 0xff;
+            out[i * 4 + 1] = (v >>> 16) & 0xff;
+            out[i * 4 + 2] = (v >>> 8) & 0xff;
+            out[i * 4 + 3] = v & 0xff;
+        }
+        return out;
+    }
+
+    hex() {
+        const bytes = this.digest();
+        return Array.from(bytes)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
     }
 }
 

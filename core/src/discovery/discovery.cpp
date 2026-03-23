@@ -12,6 +12,14 @@
 
 #ifdef _WIN32
 #include <iphlpapi.h>
+#elif defined(__linux__)
+#include <arpa/inet.h>
+#include <cstdio>
+#include <cstring>
+#elif defined(__APPLE__)
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #endif
 
 namespace teleport {
@@ -156,25 +164,82 @@ std::string DiscoveryManager::detect_hotspot_gateway() {
     ULONG size = 0;
     GetAdaptersInfo(nullptr, &size);
     if (size == 0) return "";
-    
+
     std::vector<uint8_t> buffer(size);
     PIP_ADAPTER_INFO adapters = reinterpret_cast<PIP_ADAPTER_INFO>(buffer.data());
-    
+
     if (GetAdaptersInfo(adapters, &size) != NO_ERROR) {
         return "";
     }
-    
+
     for (PIP_ADAPTER_INFO adapter = adapters; adapter; adapter = adapter->Next) {
         std::string gateway = adapter->GatewayList.IpAddress.String;
-        
+
         // Check for common mobile hotspot patterns
         if (gateway.find("192.168.43.") == 0 ||   // Android hotspot
-            gateway.find("172.20.10.") == 0 ||    // iOS hotspot  
+            gateway.find("172.20.10.") == 0 ||    // iOS hotspot
             gateway.find("192.168.137.") == 0) {  // Windows hotspot
             LOG_DEBUG("Detected hotspot gateway: ", gateway);
             return gateway;
         }
     }
+
+#elif defined(__linux__)
+    // BUG FIX (Bug 6): Linux implementation via /proc/net/route.
+    // Each line: Iface  Dest  Gateway  Flags  ...
+    // Dest==0 means the default route; Gateway is the default gateway (little-endian hex).
+    FILE* fp = fopen("/proc/net/route", "r");
+    if (!fp) return "";
+
+    char line[512];
+    // Skip header line
+    if (!fgets(line, sizeof(line), fp)) { fclose(fp); return ""; }
+
+    while (fgets(line, sizeof(line), fp)) {
+        char iface[64];
+        unsigned long dest = 0, gw = 0, flags = 0;
+        if (sscanf(line, "%63s %lX %lX %lX", iface, &dest, &gw, &flags) < 4)
+            continue;
+        if (dest != 0) continue;  // Only the default route (destination 0.0.0.0)
+        if (gw == 0) continue;    // Skip entries with no gateway
+
+        struct in_addr addr;
+        addr.s_addr = static_cast<in_addr_t>(gw);
+        std::string gateway = inet_ntoa(addr);
+
+        if (gateway.find("192.168.43.") == 0 ||
+            gateway.find("172.20.10.") == 0 ||
+            gateway.find("192.168.137.") == 0) {
+            LOG_DEBUG("Detected hotspot gateway (Linux): ", gateway);
+            fclose(fp);
+            return gateway;
+        }
+    }
+    fclose(fp);
+
+#elif defined(__APPLE__)
+    // BUG FIX (Bug 6): macOS — use getifaddrs to find relevant interface addresses.
+    // (macOS doesn't expose /proc/net/route; iterate interfaces and match subnets.)
+    struct ifaddrs* ifa_list = nullptr;
+    if (getifaddrs(&ifa_list) != 0) return "";
+
+    std::string result;
+    for (struct ifaddrs* ifa = ifa_list; ifa; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+        char buf[INET_ADDRSTRLEN];
+        const void* sinaddr = &reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr)->sin_addr;
+        if (!inet_ntop(AF_INET, sinaddr, buf, sizeof(buf))) continue;
+        std::string ip = buf;
+        if (ip.find("192.168.43.") == 0 ||
+            ip.find("172.20.10.") == 0 ||
+            ip.find("192.168.137.") == 0) {
+            LOG_DEBUG("Detected hotspot interface (macOS): ", ip);
+            result = ip;
+            break;
+        }
+    }
+    freeifaddrs(ifa_list);
+    return result;
 #endif
     return "";  // No hotspot detected
 }

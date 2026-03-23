@@ -202,7 +202,7 @@ public:
 private:
     void sender_worker(size_t stream_id);
     void receiver_worker(size_t stream_id);
-    void update_stats(uint64_t bytes);
+    void update_stats(uint64_t bytes, bool is_sending);
     
     Config m_config;
     std::vector<std::unique_ptr<pal::TcpSocket>> m_streams;

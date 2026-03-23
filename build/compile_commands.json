@@ -121,6 +121,12 @@
 },
 {
   "directory": "/home/dheeraj/Code/actual project /teleport/Teleport-v1/build",
+  "command": "/usr/bin/c++ -DTELEPORT_LINUX -DTELEPORT_STATIC -I\"/home/dheeraj/Code/actual project /teleport/Teleport-v1/core/include\" -I\"/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o core/CMakeFiles/teleport_transfer_selftest.dir/tests/test_transfer_bulletproof.cpp.o -c \"/home/dheeraj/Code/actual project /teleport/Teleport-v1/core/tests/test_transfer_bulletproof.cpp\"",
+  "file": "/home/dheeraj/Code/actual project /teleport/Teleport-v1/core/tests/test_transfer_bulletproof.cpp",
+  "output": "core/CMakeFiles/teleport_transfer_selftest.dir/tests/test_transfer_bulletproof.cpp.o"
+},
+{
+  "directory": "/home/dheeraj/Code/actual project /teleport/Teleport-v1/build",
   "command": "/usr/bin/c++ -DTELEPORT_LINUX -DTELEPORT_STATIC -I\"/home/dheeraj/Code/actual project /teleport/Teleport-v1/cli\" -I\"/home/dheeraj/Code/actual project /teleport/Teleport-v1/core/include\" -I\"/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-src/include\" -O3 -DNDEBUG -std=c++17 -o cli/CMakeFiles/teleport_cli.dir/main.cpp.o -c \"/home/dheeraj/Code/actual project /teleport/Teleport-v1/cli/main.cpp\"",
   "file": "/home/dheeraj/Code/actual project /teleport/Teleport-v1/cli/main.cpp",
   "output": "cli/CMakeFiles/teleport_cli.dir/main.cpp.o"

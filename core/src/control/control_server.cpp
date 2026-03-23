@@ -403,9 +403,28 @@ Result<void> ControlServer::receive_files(
             if (chunk.file_id != file.id) {
                 return make_error(TELEPORT_ERROR_PROTOCOL, "File ID mismatch in chunk");
             }
+
+            uint64_t expected_offset = file.size - bytes_remaining;
+            if (static_cast<uint64_t>(chunk.offset) != expected_offset) {
+                return make_error(TELEPORT_ERROR_PROTOCOL, "Unexpected chunk offset");
+            }
+
+            if (chunk.size == 0) {
+                return make_error(TELEPORT_ERROR_PROTOCOL, "Zero-sized chunk not allowed");
+            }
+
+            if (chunk.size > m_config.chunk_size) {
+                return make_error(TELEPORT_ERROR_PROTOCOL,
+                                  "Chunk size exceeds configured limit");
+            }
+
+            if (chunk.size > bytes_remaining) {
+                return make_error(TELEPORT_ERROR_PROTOCOL,
+                                  "Chunk size exceeds remaining file bytes");
+            }
             
             // Read chunk data
-            size_t to_read = std::min(static_cast<size_t>(chunk.size), buffer.size());
+            size_t to_read = static_cast<size_t>(chunk.size);
             auto data_result = socket.recv_all(buffer.data(), to_read);
             if (!data_result) {
                 return data_result.error();

@@ -54,6 +54,8 @@ set(DESKTOP_COMMON_HEADERS
 # WINDOWS BUILD (DirectX 11 + Win32)
 # ============================================================================
 if(WIN32)
+    find_package(OpenSSL QUIET)
+
     set(IMGUI_WIN32_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
         ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
@@ -63,6 +65,7 @@ if(WIN32)
         src/main.cpp
         src/Application.cpp
         src/platform/Sound_win32.cpp
+        src/WebSignalingClient.cpp
     )
 
     set(DESKTOP_WIN_HEADERS
@@ -97,12 +100,25 @@ if(WIN32)
         Shlwapi
     )
 
+    if(OpenSSL_FOUND)
+        target_link_libraries(TeleportUI PRIVATE
+            OpenSSL::SSL
+            OpenSSL::Crypto
+        )
+    else()
+        message(WARNING "OpenSSL not found for Windows desktop build; wss signaling support will be disabled.")
+    endif()
+
     target_compile_definitions(TeleportUI PRIVATE
         UNICODE
         _UNICODE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
     )
+
+    if(OpenSSL_FOUND)
+        target_compile_definitions(TeleportUI PRIVATE USE_OPENSSL)
+    endif()
 
     set_target_properties(TeleportUI PROPERTIES
         VS_DPI_AWARE "PerMonitor"

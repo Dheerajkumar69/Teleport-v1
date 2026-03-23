@@ -16,6 +16,7 @@
     let isReceiving = false;
     let pendingRequest = null;
     let currentTheme = teleport.getTheme() || 'dark';
+    const previewUrls = new Set();
 
     // Request notification permission
     teleport.requestNotificationPermission?.();
@@ -245,6 +246,19 @@
         return date.toLocaleDateString();
     }
 
+    function normalizeProgressValue(value) {
+        if (typeof value !== 'number' || Number.isNaN(value)) return 0;
+        const normalized = value > 1 ? value / 100 : value;
+        return Math.max(0, Math.min(1, normalized));
+    }
+
+    function clearPreviewUrls() {
+        for (const url of previewUrls) {
+            URL.revokeObjectURL(url);
+        }
+        previewUrls.clear();
+    }
+
     function escapeHtml(str) {
         const div = document.createElement('div');
         div.textContent = str;
@@ -335,10 +349,12 @@
     // Render file list with type icons and preview
     function renderFileList() {
         if (selectedFiles.length === 0) {
+            clearPreviewUrls();
             fileList.innerHTML = '';
             return;
         }
 
+        clearPreviewUrls();
         const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
 
         fileList.innerHTML = `
@@ -353,6 +369,7 @@
 
             if (isImage) {
                 const url = URL.createObjectURL(file);
+                previewUrls.add(url);
                 preview = `<img src="${url}" class="file-preview" alt="Preview">`;
             }
 
@@ -416,8 +433,8 @@
                 'cancelled': '✕'
             }[t.status] || '↻';
 
-            const speedText = t.speed ? formatSpeed(t.speed) : '--';
-            const etaText = t.eta ? formatETA(t.eta) : '--';
+            const speedText = Number.isFinite(t.speed) ? formatSpeed(Math.max(0, t.speed)) : '--';
+            const etaText = Number.isFinite(t.eta) ? formatETA(t.eta) : '--';
             const fileProgress = t.totalFiles > 1 ? `File ${(t.fileIndex || 0) + 1}/${t.totalFiles}` : '';
             const fileType = getFileTypeClass(t.filename);
 
@@ -768,23 +785,8 @@
             teleport.acceptFileRequest(pendingRequest.from);
             showToast('Receiving files...', 'success');
 
-            pendingRequest.files.forEach((f, i) => {
-                const transferId = crypto.randomUUID();
-                transfers.set(transferId, {
-                    id: transferId,
-                    filename: f.name,
-                    total: f.size,
-                    transferred: 0,
-                    progress: 0,
-                    status: 'receiving',
-                    direction: 'receive',
-                    speed: 0,
-                    eta: 0,
-                    fileIndex: i,
-                    totalFiles: pendingRequest.files.length
-                });
-            });
-            renderTransfers();
+            // Transfer entries are created when the sender's real transferId arrives in progress events.
+            // This avoids stale placeholder cards that can never be updated.
         }
         hideFileRequestModal();
     });
@@ -911,12 +913,13 @@
     };
 
     teleport.onTransferProgress = (progress) => {
+        const normalizedProgress = normalizeProgressValue(progress.progress);
         let transfer = transfers.get(progress.transferId);
         if (!transfer) {
             transfer = {
                 id: progress.transferId,
                 filename: progress.filename,
-                total: progress.total,
+                total: typeof progress.total === 'number' ? progress.total : 0,
                 transferred: 0,
                 progress: 0,
                 status: progress.sent !== undefined ? 'sending' : 'receiving',
@@ -929,28 +932,47 @@
             transfers.set(progress.transferId, transfer);
         }
 
-        transfer.transferred = progress.received || progress.sent;
-        transfer.progress = progress.progress;
-        transfer.speed = progress.speed;
-        transfer.eta = progress.eta;
-        transfer.fileIndex = progress.fileIndex;
-        transfer.totalFiles = progress.totalFiles;
+        transfer.transferred = progress.received ?? progress.sent ?? transfer.transferred ?? 0;
+        transfer.progress = normalizedProgress;
+        transfer.speed = typeof progress.speed === 'number' ? progress.speed : transfer.speed;
+        transfer.eta = typeof progress.eta === 'number' ? progress.eta : transfer.eta;
+        transfer.fileIndex = Number.isFinite(progress.fileIndex) ? progress.fileIndex : transfer.fileIndex;
+        transfer.totalFiles = Number.isFinite(progress.totalFiles) ? progress.totalFiles : transfer.totalFiles;
+        if (typeof progress.total === 'number') {
+            transfer.total = progress.total;
+        }
 
         renderTransfers();
     };
 
     teleport.onTransferComplete = (result) => {
-        const transfer = transfers.get(result.transferId);
-        if (transfer) {
-            transfer.progress = 1;
-            transfer.status = 'complete';
-            renderTransfers();
-
-            setTimeout(() => {
-                transfers.delete(result.transferId);
-                renderTransfers();
-            }, 5000);
+        let transfer = transfers.get(result.transferId);
+        if (!transfer) {
+            transfer = {
+                id: result.transferId,
+                filename: result.filename,
+                total: typeof result.size === 'number' ? result.size : 0,
+                transferred: typeof result.size === 'number' ? result.size : 0,
+                progress: 1,
+                status: 'complete',
+                direction: 'receive',
+                speed: 0,
+                eta: 0,
+                fileIndex: Number.isFinite(result.fileIndex) ? result.fileIndex : 0,
+                totalFiles: Number.isFinite(result.totalFiles) ? result.totalFiles : 1
+            };
+            transfers.set(result.transferId, transfer);
         }
+
+        transfer.progress = 1;
+        transfer.status = 'complete';
+        transfer.transferred = transfer.total;
+        renderTransfers();
+
+        setTimeout(() => {
+            transfers.delete(result.transferId);
+            renderTransfers();
+        }, 5000);
 
         // Celebrate on final file with SOUND
         if (!result.totalFiles || result.fileIndex === result.totalFiles - 1) {
@@ -1089,6 +1111,9 @@
         .lan-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: rgba(6, 182, 212, 0.15); color: #06B6D4; border: 1px solid rgba(6, 182, 212, 0.3); }
     `;
     document.head.appendChild(style);
+
+    window.addEventListener('beforeunload', clearPreviewUrls);
+    window.addEventListener('pagehide', clearPreviewUrls);
 
     // Global error handler for centralized error management
     teleport.onError = (error) => {

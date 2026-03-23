@@ -13,7 +13,6 @@
 typedef int socklen_t;
 #else
 #include <arpa/inet.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -26,6 +25,8 @@ typedef int socklen_t;
 #endif
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -269,7 +270,220 @@ std::string generateUUID() {
   return uuid;
 }
 
+std::string JsonGetStringField(const std::string &json, const std::string &key,
+                               size_t startPos = 0) {
+  const std::string pattern = "\"" + key + "\"";
+  size_t keyPos = json.find(pattern, startPos);
+  if (keyPos == std::string::npos) {
+    return "";
+  }
+
+  size_t colonPos = json.find(':', keyPos + pattern.size());
+  if (colonPos == std::string::npos) {
+    return "";
+  }
+
+  size_t valueStart = json.find('"', colonPos);
+  if (valueStart == std::string::npos) {
+    return "";
+  }
+
+  size_t valueEnd = valueStart + 1;
+  while (valueEnd < json.size()) {
+    if (json[valueEnd] == '"' && json[valueEnd - 1] != '\\') {
+      break;
+    }
+    ++valueEnd;
+  }
+
+  if (valueEnd >= json.size()) {
+    return "";
+  }
+
+  return json.substr(valueStart + 1, valueEnd - valueStart - 1);
+}
+
+size_t JsonGetSizeField(const std::string &json, const std::string &key,
+                        size_t defaultValue = 0, size_t startPos = 0) {
+  const std::string pattern = "\"" + key + "\"";
+  size_t keyPos = json.find(pattern, startPos);
+  if (keyPos == std::string::npos) {
+    return defaultValue;
+  }
+
+  size_t colonPos = json.find(':', keyPos + pattern.size());
+  if (colonPos == std::string::npos) {
+    return defaultValue;
+  }
+
+  size_t valuePos = colonPos + 1;
+  while (valuePos < json.size() &&
+         std::isspace(static_cast<unsigned char>(json[valuePos]))) {
+    ++valuePos;
+  }
+
+  if (valuePos >= json.size() || !std::isdigit(static_cast<unsigned char>(json[valuePos]))) {
+    return defaultValue;
+  }
+
+  size_t endPos = valuePos;
+  while (endPos < json.size() &&
+         std::isdigit(static_cast<unsigned char>(json[endPos]))) {
+    ++endPos;
+  }
+
+  try {
+    return static_cast<size_t>(std::stoull(json.substr(valuePos, endPos - valuePos)));
+  } catch (...) {
+    return defaultValue;
+  }
+}
+
+bool JsonGetBoolField(const std::string &json, const std::string &key,
+                      bool defaultValue = false, size_t startPos = 0) {
+  const std::string pattern = "\"" + key + "\"";
+  size_t keyPos = json.find(pattern, startPos);
+  if (keyPos == std::string::npos) {
+    return defaultValue;
+  }
+
+  size_t colonPos = json.find(':', keyPos + pattern.size());
+  if (colonPos == std::string::npos) {
+    return defaultValue;
+  }
+
+  size_t valuePos = colonPos + 1;
+  while (valuePos < json.size() &&
+         std::isspace(static_cast<unsigned char>(json[valuePos]))) {
+    ++valuePos;
+  }
+
+  if (json.compare(valuePos, 4, "true") == 0) {
+    return true;
+  }
+  if (json.compare(valuePos, 5, "false") == 0) {
+    return false;
+  }
+  return defaultValue;
+}
+
+std::vector<FileInfo> JsonParseFileArray(const std::string &json) {
+  std::vector<FileInfo> files;
+  size_t searchPos = 0;
+
+  while (true) {
+    size_t namePos = json.find("\"name\"", searchPos);
+    if (namePos == std::string::npos) {
+      break;
+    }
+
+    FileInfo file;
+    file.name = JsonGetStringField(json, "name", namePos);
+    file.size = JsonGetSizeField(json, "size", 0, namePos);
+    file.mimeType = JsonGetStringField(json, "mimeType", namePos);
+    file.sha256 = JsonGetStringField(json, "sha256", namePos);
+
+    if (!file.name.empty()) {
+      files.push_back(file);
+    }
+
+    searchPos = namePos + 6;
+  }
+
+  return files;
+}
+
+std::string JsonEscape(const std::string &input) {
+  std::string out;
+  out.reserve(input.size() + 8);
+  for (char c : input) {
+    switch (c) {
+    case '\\':
+      out += "\\\\";
+      break;
+    case '"':
+      out += "\\\"";
+      break;
+    case '\b':
+      out += "\\b";
+      break;
+    case '\f':
+      out += "\\f";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    default:
+      if (static_cast<unsigned char>(c) < 0x20) {
+        char buf[7];
+        snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+        out += buf;
+      } else {
+        out += c;
+      }
+      break;
+    }
+  }
+  return out;
+}
+
 } // anonymous namespace
+
+bool WebSignalingClient::isValidSha256Hex(const std::string &value) {
+  if (value.empty()) {
+    return true;
+  }
+  if (value.size() != 64) {
+    return false;
+  }
+  return std::all_of(value.begin(), value.end(), [](unsigned char c) {
+    return std::isxdigit(c) != 0;
+  });
+}
+
+RelayVerificationResult
+WebSignalingClient::waitForRelayVerification(const std::string &transferId,
+                                             int timeoutMs) {
+  std::unique_lock<std::mutex> lock(m_verificationMutex);
+  const bool available = m_verificationCv.wait_for(
+      lock, std::chrono::milliseconds(timeoutMs), [&]() {
+        return m_relayVerifications.find(transferId) !=
+               m_relayVerifications.end();
+      });
+
+  if (!available) {
+    return RelayVerificationResult{};
+  }
+
+  RelayVerificationResult result = m_relayVerifications[transferId];
+  m_relayVerifications.erase(transferId);
+  return result;
+}
+
+bool WebSignalingClient::waitForFileResponse(const std::string &targetPeerId,
+                                             int timeoutMs,
+                                             bool &accepted) {
+  std::unique_lock<std::mutex> lock(m_fileResponseMutex);
+  const bool available = m_fileResponseCv.wait_for(
+      lock, std::chrono::milliseconds(timeoutMs), [&]() {
+        return m_pendingFileResponses.find(targetPeerId) !=
+               m_pendingFileResponses.end();
+      });
+
+  if (!available) {
+    return false;
+  }
+
+  accepted = m_pendingFileResponses[targetPeerId];
+  m_pendingFileResponses.erase(targetPeerId);
+  return true;
+}
 
 // ============ SHA-256 Static Methods ============
 std::string
@@ -483,6 +697,17 @@ bool WebSignalingClient::connectInternal() {
   std::string host, path = "/";
   int port = useTLS ? 443 : 80;
 
+#ifndef USE_OPENSSL
+  if (useTLS) {
+    m_state = ConnectionState::Failed;
+    if (m_onError) {
+      m_onError(SignalingError::ConnectionFailed,
+                "wss:// requires TLS support (USE_OPENSSL not enabled)");
+    }
+    return false;
+  }
+#endif
+
   size_t pathStart = url.find('/');
   if (pathStart != std::string::npos) {
     path = url.substr(pathStart);
@@ -649,20 +874,29 @@ bool WebSignalingClient::connectInternal() {
   // Set read timeout for message loop
   setSocketTimeout(m_socket, SignalingConfig::READ_TIMEOUT_MS, true);
 
+  // Reconnect path can leave a finished but joinable thread object behind.
+  if (m_messageThread && m_messageThread->joinable()) {
+    m_messageThread->join();
+  }
+
   // Start message processing thread
   m_messageThread =
       std::make_unique<std::thread>(&WebSignalingClient::processMessages, this);
 
-  // Heartbeat thread disabled for stability - reconnect handled externally
-  // m_heartbeatThread =
-  //     std::make_unique<std::thread>(&WebSignalingClient::heartbeatLoop,
-  //     this);
+  // BUG FIX (Bug W1): Heartbeat was disabled, leaving zombie connections alive
+  // indefinitely.  Re-enable so ping failures trigger scheduleReconnect().
+  if (m_heartbeatThread && m_heartbeatThread->joinable()) {
+    m_heartbeatThread->join();
+  }
+  m_heartbeatThread =
+      std::make_unique<std::thread>(&WebSignalingClient::heartbeatLoop, this);
 
-  // Send join message
+  // Send join — server assigns peerId via 'welcome', do NOT send our local UUID
+  // Include fingerprint:null so web peers can identify us as a non-E2E peer
   std::ostringstream joinMsg;
-  joinMsg << "{\"type\":\"join\",\"room\":\"" << m_room << "\",\"peerId\":\""
-          << m_peerId << "\",\"name\":\"" << m_deviceName
-          << "\",\"platform\":\"desktop\"}";
+  joinMsg << "{\"type\":\"join\",\"room\":\"" << JsonEscape(m_room)
+          << "\",\"name\":\"" << JsonEscape(m_deviceName)
+          << "\",\"platform\":\"desktop\",\"fingerprint\":null}";
   sendMessage(joinMsg.str());
 
   // Notify callback
@@ -698,6 +932,7 @@ void WebSignalingClient::disconnect() {
   if (m_reconnectThread && m_reconnectThread->joinable()) {
     m_reconnectThread->join();
   }
+  m_reconnectInProgress = false;
 
 #ifdef USE_OPENSSL
   // Clean up SSL AFTER threads are stopped
@@ -714,6 +949,18 @@ void WebSignalingClient::disconnect() {
 
   m_state = ConnectionState::Disconnected;
 
+  {
+    std::lock_guard<std::mutex> verificationLock(m_verificationMutex);
+    m_relayVerifications.clear();
+  }
+  m_verificationCv.notify_all();
+
+  {
+    std::lock_guard<std::mutex> responseLock(m_fileResponseMutex);
+    m_pendingFileResponses.clear();
+  }
+  m_fileResponseCv.notify_all();
+
   if (m_onDisconnected) {
     std::lock_guard<std::mutex> lock(m_callbackMutex);
     m_onDisconnected("Disconnected by user");
@@ -721,12 +968,44 @@ void WebSignalingClient::disconnect() {
 }
 
 // ============ Reconnect Loop ============
+void WebSignalingClient::scheduleReconnect() {
+  if (!m_autoReconnect || m_stopRequested) {
+    return;
+  }
+
+  bool expected = false;
+  if (!m_reconnectInProgress.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
+  if (m_reconnectThread && m_reconnectThread->joinable()) {
+    if (m_reconnectThread->get_id() != std::this_thread::get_id()) {
+      m_reconnectThread->join();
+    }
+  }
+
+  m_reconnectThread =
+      std::make_unique<std::thread>(&WebSignalingClient::reconnectLoop, this);
+}
+
 void WebSignalingClient::reconnectLoop() {
+  struct ReconnectGuard {
+    std::atomic<bool> &flag;
+    ~ReconnectGuard() { flag.store(false); }
+  } guard{m_reconnectInProgress};
+
   while (m_autoReconnect && !m_stopRequested &&
          m_reconnectAttempt < SignalingConfig::RECONNECT_MAX_ATTEMPTS) {
 
     m_state = ConnectionState::Reconnecting;
     m_reconnectAttempt++;
+
+    // BUG FIX (Bug W2): Clear stale peer list on each reconnect attempt so
+    // the UI never shows peers that are no longer reachable.
+    {
+      std::lock_guard<std::mutex> pLock(m_peersMutex);
+      m_peers.clear();
+    }
 
     if (m_onReconnecting) {
       std::lock_guard<std::mutex> lock(m_callbackMutex);
@@ -778,8 +1057,7 @@ void WebSignalingClient::heartbeatLoop() {
         // Connection lost
         if (m_autoReconnect) {
           m_running = false;
-          m_reconnectThread = std::make_unique<std::thread>(
-              &WebSignalingClient::reconnectLoop, this);
+          scheduleReconnect();
         }
       }
       m_lastHeartbeat = std::chrono::steady_clock::now();
@@ -801,6 +1079,22 @@ void WebSignalingClient::cleanupStaleTransfers() {
                        .count();
     if (elapsed > SignalingConfig::TRANSFER_TIMEOUT_MS) {
       it = m_incomingTransfers.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  for (auto it = m_outgoingTransfers.begin(); it != m_outgoingTransfers.end();) {
+    if (it->second.state != TransferState::InProgress) {
+      ++it;
+      continue;
+    }
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       now - it->second.lastChunkTime)
+                       .count();
+    if (elapsed > SignalingConfig::TRANSFER_TIMEOUT_MS) {
+      it = m_outgoingTransfers.erase(it);
     } else {
       ++it;
     }
@@ -902,6 +1196,21 @@ void WebSignalingClient::setOnTransferComplete(OnTransferCompleteCallback cb) {
   m_onTransferComplete = std::move(cb);
 }
 
+void WebSignalingClient::setOnOffer(OnOfferCallback cb) {
+  std::lock_guard<std::mutex> lock(m_callbackMutex);
+  m_onOffer = std::move(cb);
+}
+
+void WebSignalingClient::setOnAnswer(OnAnswerCallback cb) {
+  std::lock_guard<std::mutex> lock(m_callbackMutex);
+  m_onAnswer = std::move(cb);
+}
+
+void WebSignalingClient::setOnIceCandidate(OnIceCandidateCallback cb) {
+  std::lock_guard<std::mutex> lock(m_callbackMutex);
+  m_onIceCandidate = std::move(cb);
+}
+
 void WebSignalingClient::setOnError(OnErrorCallback cb) {
   std::lock_guard<std::mutex> lock(m_callbackMutex);
   m_onError = std::move(cb);
@@ -909,9 +1218,6 @@ void WebSignalingClient::setOnError(OnErrorCallback cb) {
 
 // ============ Process Messages Loop ============
 void WebSignalingClient::processMessages() {
-  std::vector<uint8_t> frameBuffer;
-  frameBuffer.reserve(SignalingConfig::CHUNK_SIZE);
-
   while (m_running && !m_stopRequested) {
     // Check if socket is still valid
     if (m_socket == -1)
@@ -934,23 +1240,25 @@ void WebSignalingClient::processMessages() {
     }
 
     // Parse WebSocket frame
-    bool fin = (header[0] & 0x80) != 0;
     int opcode = header[0] & 0x0F;
     bool masked = (header[1] & 0x80) != 0;
     size_t payloadLen = header[1] & 0x7F;
 
     // Extended payload length
+    // BUG FIX (Bug W3): a partial recv of the length extension bytes is a
+    // fatal framing error — break (not continue) so we reconnect rather than
+    // trying to re-parse starting at a wrong position.
     if (payloadLen == 126) {
       uint8_t ext[2];
       if (recvWithTimeout(m_socket, ext, 2, SignalingConfig::READ_TIMEOUT_MS) !=
           2)
-        continue;
+        break;
       payloadLen = (ext[0] << 8) | ext[1];
     } else if (payloadLen == 127) {
       uint8_t ext[8];
       if (recvWithTimeout(m_socket, ext, 8, SignalingConfig::READ_TIMEOUT_MS) !=
           8)
-        continue;
+        break;
       payloadLen = 0;
       for (int i = 0; i < 8; i++)
         payloadLen = (payloadLen << 8) | ext[i];
@@ -1001,22 +1309,26 @@ void WebSignalingClient::processMessages() {
       if (validateMessage(message)) {
         handleMessage(message);
       }
+    } else if (opcode == 0x02) { // Binary frame — not used; skip gracefully
+      // No-op: binary frames are not part of our protocol.
     } else if (opcode == 0x08) { // Close frame
+      // BUG FIX (Bug W4): break out of the loop immediately so the
+      // post-loop reconnect logic runs — previously we only set m_running=false
+      // and called scheduleReconnect() inside the loop, but continued to the
+      // next iteration where the socket was already closed by the server.
       m_running = false;
-      if (m_autoReconnect) {
-        m_reconnectThread = std::make_unique<std::thread>(
-            &WebSignalingClient::reconnectLoop, this);
-      }
+      break;
     } else if (opcode == 0x09) { // Ping
       uint8_t pongFrame[2] = {0x8A, 0x00};
       sendWithTimeout(m_socket, pongFrame, 2, 1000);
+    } else if (opcode == 0x0A) { // Pong — server reply to our heartbeat ping
+      m_lastActivity = std::chrono::steady_clock::now();
     }
   }
 
   // Disconnected
   if (m_autoReconnect && !m_stopRequested) {
-    m_reconnectThread =
-        std::make_unique<std::thread>(&WebSignalingClient::reconnectLoop, this);
+    scheduleReconnect();
   }
 }
 
@@ -1036,7 +1348,16 @@ void WebSignalingClient::handleMessage(const std::string &message) {
 
   std::string type = message.substr(valueStart + 1, valueEnd - valueStart - 1);
 
-  if (type == "peers") {
+  if (type == "welcome") {
+    // Server assigns us a stable peerId (format: peer_xxxxxxxx).
+    // We must capture this because it is what all other peers see us as.
+    std::string serverPeerId = JsonGetStringField(message, "peerId");
+    if (!serverPeerId.empty()) {
+      std::lock_guard<std::mutex> lock(m_peersMutex); // avoids using stateMutex (held by connect())
+      m_peerId = serverPeerId;
+    }
+    return; // nothing else to do for welcome
+  } else if (type == "peers") {
     // Parse peers list
     std::vector<WebPeer> peers;
     size_t pos = 0;
@@ -1067,109 +1388,544 @@ void WebSignalingClient::handleMessage(const std::string &message) {
       m_peers = std::move(peers);
     }
     if (m_onPeersUpdated) {
+      std::vector<WebPeer> peersSnapshot;
+      {
+        std::lock_guard<std::mutex> lock(m_peersMutex);
+        peersSnapshot = m_peers;
+      }
       std::lock_guard<std::mutex> lock(m_callbackMutex);
-      m_onPeersUpdated(m_peers);
+      m_onPeersUpdated(peersSnapshot);
+    }
+  } else if (type == "peer-joined") {
+    WebPeer peer;
+    peer.id = JsonGetStringField(message, "id");
+    if (peer.id.empty()) {
+      peer.id = JsonGetStringField(message, "peerId");
+    }
+    peer.name = JsonGetStringField(message, "name");
+    if (peer.name.empty()) {
+      peer.name = JsonGetStringField(message, "fromName");
+    }
+    peer.platform = JsonGetStringField(message, "platform");
+    if (peer.platform.empty()) {
+      peer.platform = "web";
+    }
+    peer.isWeb = true;
+    peer.lastSeen = std::chrono::steady_clock::now();
+
+    if (!peer.id.empty() && peer.id != m_peerId) {
+      std::vector<WebPeer> peersSnapshot;
+      {
+        std::lock_guard<std::mutex> lock(m_peersMutex);
+        auto it = std::find_if(m_peers.begin(), m_peers.end(),
+                               [&](const WebPeer &p) { return p.id == peer.id; });
+        if (it == m_peers.end()) {
+          m_peers.push_back(peer);
+        } else {
+          *it = peer;
+        }
+        peersSnapshot = m_peers;
+      }
+      OnPeersUpdatedCallback peersCb;
+      {
+        std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+        peersCb = m_onPeersUpdated;
+      }
+      if (peersCb) {
+        peersCb(peersSnapshot);
+      }
+    }
+  } else if (type == "peer-left") {
+    std::string peerId = JsonGetStringField(message, "peerId");
+    if (!peerId.empty()) {
+      std::vector<WebPeer> peersSnapshot;
+      bool removed = false;
+      {
+        std::lock_guard<std::mutex> lock(m_peersMutex);
+        auto newEnd = std::remove_if(m_peers.begin(), m_peers.end(),
+                                     [&](const WebPeer &p) {
+                                       return p.id == peerId;
+                                     });
+        removed = (newEnd != m_peers.end());
+        m_peers.erase(newEnd, m_peers.end());
+        peersSnapshot = m_peers;
+      }
+
+      if (removed) {
+        OnPeersUpdatedCallback peersCb;
+        {
+          std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+          peersCb = m_onPeersUpdated;
+        }
+        if (peersCb) {
+          peersCb(peersSnapshot);
+        }
+      }
     }
   } else if (type == "file-request") {
     // Parse file request
-    std::string fromId, fromName;
-    std::vector<FileInfo> files;
-    // Extract fromId
-    size_t fromPos = message.find("\"from\":");
-    if (fromPos != std::string::npos) {
-      size_t start = message.find('"', fromPos + 7);
-      size_t end = message.find('"', start + 1);
-      if (start != std::string::npos && end != std::string::npos) {
-        fromId = message.substr(start + 1, end - start - 1);
+    std::string fromId = JsonGetStringField(message, "from");
+    std::string fromName = JsonGetStringField(message, "fromName");
+    if (fromName.empty()) {
+      fromName = JsonGetStringField(message, "name");
+    }
+
+    std::vector<FileInfo> files = JsonParseFileArray(message);
+
+    // Backward compatibility for minimal payloads containing filename/size.
+    if (files.empty()) {
+      FileInfo single;
+      single.name = JsonGetStringField(message, "filename");
+      single.size = JsonGetSizeField(message, "size", 0);
+      if (!single.name.empty()) {
+        files.push_back(std::move(single));
       }
     }
+
     if (m_onFileRequest) {
       std::lock_guard<std::mutex> lock(m_callbackMutex);
       m_onFileRequest(fromId, fromName, files);
     }
+  } else if (type == "file-response") {
+    std::string fromId = JsonGetStringField(message, "from");
+    bool accepted = JsonGetBoolField(message, "accepted", false);
+
+    if (!fromId.empty()) {
+      {
+        std::lock_guard<std::mutex> lock(m_fileResponseMutex);
+        m_pendingFileResponses[fromId] = accepted;
+      }
+      m_fileResponseCv.notify_all();
+    }
+  } else if (type == "offer") {
+    const std::string fromId = JsonGetStringField(message, "from");
+    const std::string sdp = JsonGetStringField(message, "sdp");
+    OnOfferCallback offerCb;
+    {
+      std::lock_guard<std::mutex> lock(m_callbackMutex);
+      offerCb = m_onOffer;
+    }
+    if (offerCb && !fromId.empty() && !sdp.empty()) {
+      offerCb(fromId, sdp);
+    }
+  } else if (type == "answer") {
+    const std::string fromId = JsonGetStringField(message, "from");
+    const std::string sdp = JsonGetStringField(message, "sdp");
+    OnAnswerCallback answerCb;
+    {
+      std::lock_guard<std::mutex> lock(m_callbackMutex);
+      answerCb = m_onAnswer;
+    }
+    if (answerCb && !fromId.empty() && !sdp.empty()) {
+      answerCb(fromId, sdp);
+    }
+  } else if (type == "ice") {
+    const std::string fromId = JsonGetStringField(message, "from");
+    std::string candidate = JsonGetStringField(message, "candidate");
+    if (candidate.empty()) {
+      candidate = JsonGetStringField(message, "sdp");
+    }
+    OnIceCandidateCallback iceCb;
+    {
+      std::lock_guard<std::mutex> lock(m_callbackMutex);
+      iceCb = m_onIceCandidate;
+    }
+    if (iceCb && !fromId.empty() && !candidate.empty()) {
+      iceCb(fromId, candidate);
+    }
   } else if (type == "relay-start") {
     // Start new incoming transfer
-    std::string transferId, filename;
-    size_t totalSize = 0;
-    // Parse fields...
-    size_t tidPos = message.find("\"transferId\":");
-    if (tidPos != std::string::npos) {
-      size_t start = message.find('"', tidPos + 13);
-      size_t end = message.find('"', start + 1);
-      if (start != std::string::npos && end != std::string::npos) {
-        transferId = message.substr(start + 1, end - start - 1);
-      }
+    std::string transferId = JsonGetStringField(message, "transferId");
+    if (transferId.empty()) {
+      return;
     }
+
     RelayTransfer transfer;
     transfer.transferId = transferId;
+    transfer.fromPeerId = JsonGetStringField(message, "from");
+    transfer.filename = JsonGetStringField(message, "filename");
+    transfer.totalSize = JsonGetSizeField(message, "size", 0);
+    transfer.fileIndex =
+        static_cast<int>(JsonGetSizeField(message, "fileIndex", 0));
+    transfer.totalFiles =
+        static_cast<int>(JsonGetSizeField(message, "totalFiles", 1));
+    transfer.sha256Expected = JsonGetStringField(message, "sha256");
     transfer.state = TransferState::InProgress;
     transfer.lastActivity = std::chrono::steady_clock::now();
+
+    // sha256 is optional — if present it must be a valid 64-hex-char digest
+    if (!transfer.sha256Expected.empty() &&
+        !isValidSha256Hex(transfer.sha256Expected)) {
+      // SHA-256 was provided but is malformed → reject
+      std::ostringstream cancelMsg;
+      cancelMsg << "{\"type\":\"relay-cancel\",\"to\":\""
+                << JsonEscape(transfer.fromPeerId) << "\",\"transferId\":\""
+                << JsonEscape(transfer.transferId)
+                << "\",\"reason\":\"invalid-sha256\"}";
+      sendMessage(cancelMsg.str());
+      if (m_onError)
+        m_onError(SignalingError::InvalidMessage,
+                  "Incoming relay transfer has malformed sha256");
+      return;
+    }
+
+    if (!m_downloadPath.empty() &&
+        transfer.totalSize > SignalingConfig::STREAM_THRESHOLD) {
+      // Large file — stream to a temp file on disk to avoid RAM exhaustion
+      transfer.streaming = true;
+      transfer.tempFilePath =
+          m_downloadPath + "/.__tmp_" + transfer.transferId;
+      transfer.tempFileHandle = std::make_shared<std::ofstream>(
+          transfer.tempFilePath, std::ios::binary | std::ios::trunc);
+      if (!transfer.tempFileHandle->is_open()) {
+        // Temp file creation failed — fall back to memory if size permits
+        transfer.streaming = false;
+        transfer.tempFileHandle.reset();
+        if (transfer.totalSize > SignalingConfig::MAX_RECEIVE_BUFFER_SIZE) {
+          if (m_onError)
+            m_onError(SignalingError::MessageTooLarge,
+                      "File too large and cannot stream to disk");
+          return;
+        }
+        transfer.data.reserve(transfer.totalSize);
+      }
+    } else {
+      // Small file — buffer in memory
+      if (transfer.totalSize > SignalingConfig::MAX_RECEIVE_BUFFER_SIZE) {
+        if (m_onError)
+          m_onError(SignalingError::MessageTooLarge,
+                    "Incoming relay transfer exceeds receive buffer limit");
+        return;
+      }
+      if (transfer.totalSize > 0) {
+        transfer.data.reserve(transfer.totalSize);
+      }
+    }
+
     std::lock_guard<std::mutex> lock(m_transfersMutex);
     m_incomingTransfers[transferId] = transfer;
   } else if (type == "relay-chunk") {
     // Receive chunk
-    std::string transferId;
-    size_t tidPos = message.find("\"transferId\":");
-    if (tidPos != std::string::npos) {
-      size_t start = message.find('"', tidPos + 13);
-      size_t end = message.find('"', start + 1);
-      if (start != std::string::npos && end != std::string::npos) {
-        transferId = message.substr(start + 1, end - start - 1);
-      }
+    std::string transferId = JsonGetStringField(message, "transferId");
+    if (transferId.empty()) {
+      return;
     }
+
+    size_t offset = JsonGetSizeField(message, "offset", 0);
     size_t dataPos = message.find("\"data\":");
     if (dataPos != std::string::npos) {
       size_t start = message.find('"', dataPos + 7);
-      size_t end = message.find('"', start + 1);
-      if (start != std::string::npos && end != std::string::npos) {
+      // BUG FIX (Bug W5): The old code searched for the closing '"' with a
+      // bare find(), which stopped at the first unescaped quote.  base64
+      // doesn't contain backslashes, but a safe scanner is still better.
+      // Scan forward skipping \" escape sequences.
+      size_t end = start + 1;
+      while (end < message.size()) {
+        if (message[end] == '\\') { ++end; } // skip escape prefix
+        else if (message[end] == '"') { break; }
+        ++end;
+      }
+      if (start != std::string::npos && end < message.size()) {
         std::string b64 = message.substr(start + 1, end - start - 1);
         std::vector<uint8_t> chunk = base64Decode(b64);
-        std::lock_guard<std::mutex> lock(m_transfersMutex);
-        auto it = m_incomingTransfers.find(transferId);
-        if (it != m_incomingTransfers.end()) {
-          // Buffer limit check
-          if (it->second.data.size() + chunk.size() >
-              SignalingConfig::MAX_RECEIVE_BUFFER_SIZE) {
-            if (m_onError)
-              m_onError(SignalingError::BufferOverflow,
-                        "Transfer buffer overflow");
-            m_incomingTransfers.erase(it);
-          } else {
-            it->second.data.insert(it->second.data.end(), chunk.begin(),
-                                   chunk.end());
-            it->second.receivedBytes += chunk.size();
-            it->second.lastActivity = std::chrono::steady_clock::now();
+        TransferProgress progress;
+        bool emitProgress = false;
+        SignalingError pendingError = SignalingError::None;
+        std::string pendingErrorMessage;
+
+        {
+          std::lock_guard<std::mutex> lock(m_transfersMutex);
+          auto it = m_incomingTransfers.find(transferId);
+          if (it != m_incomingTransfers.end()) {
+            if (offset != it->second.receivedBytes) {
+              pendingError = SignalingError::InvalidMessage;
+              pendingErrorMessage = "Out-of-order relay chunk offset";
+              m_incomingTransfers.erase(it);
+            } else if (it->second.streaming && it->second.tempFileHandle &&
+                       it->second.tempFileHandle->is_open()) {
+              // Streaming mode: write chunk to disk
+              it->second.tempFileHandle->write(
+                  reinterpret_cast<const char *>(chunk.data()), chunk.size());
+              if (it->second.tempFileHandle->fail()) {
+                // Disk write error
+                it->second.tempFileHandle->close();
+                std::remove(it->second.tempFilePath.c_str());
+                m_incomingTransfers.erase(it);
+                pendingError = SignalingError::TransferFailed;
+                pendingErrorMessage = "Disk write failed during streaming";
+              } else {
+                it->second.receivedBytes += chunk.size();
+                it->second.lastActivity = std::chrono::steady_clock::now();
+                progress.transferId = it->second.transferId;
+                progress.filename = it->second.filename;
+                progress.totalBytes = it->second.totalSize;
+                progress.transferredBytes = it->second.receivedBytes;
+                progress.state = TransferState::InProgress;
+                emitProgress = true;
+              }
+            } else {
+              // In-memory mode: guard against overflow.
+              // BUG FIX (Bug W6): Also reject a single chunk that is larger
+              // than the buffer limit, not just cumulative overflow.
+              const bool overflow =
+                  chunk.size() > SignalingConfig::MAX_RECEIVE_BUFFER_SIZE ||
+                  it->second.data.size() + chunk.size() >
+                      SignalingConfig::MAX_RECEIVE_BUFFER_SIZE;
+              if (overflow) {
+                pendingError = SignalingError::BufferOverflow;
+                pendingErrorMessage = "Transfer buffer overflow";
+                m_incomingTransfers.erase(it);
+              } else {
+                it->second.data.insert(it->second.data.end(), chunk.begin(),
+                                       chunk.end());
+                it->second.receivedBytes += chunk.size();
+                it->second.lastActivity = std::chrono::steady_clock::now();
+                progress.transferId = it->second.transferId;
+                progress.filename = it->second.filename;
+                progress.totalBytes = it->second.totalSize;
+                progress.transferredBytes = it->second.receivedBytes;
+                progress.state = TransferState::InProgress;
+                emitProgress = true;
+              }
+            }
+          }
+        }
+
+        if (pendingError != SignalingError::None && m_onError) {
+          m_onError(pendingError, pendingErrorMessage);
+        }
+
+        if (emitProgress) {
+          OnTransferProgressCallback progressCb;
+          {
+            std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+            progressCb = m_onTransferProgress;
+          }
+          if (progressCb) {
+            progressCb(progress);
           }
         }
       }
     }
   } else if (type == "relay-end") {
-    std::string transferId;
-    size_t tidPos = message.find("\"transferId\":");
-    if (tidPos != std::string::npos) {
-      size_t start = message.find('"', tidPos + 13);
-      size_t end = message.find('"', start + 1);
-      if (start != std::string::npos && end != std::string::npos) {
-        transferId = message.substr(start + 1, end - start - 1);
+    std::string transferId = JsonGetStringField(message, "transferId");
+    std::string fromPeerId = JsonGetStringField(message, "from");
+    std::string filename;
+    std::vector<uint8_t> data;
+    bool verified = true;
+    std::string verificationReason;
+    std::string actualHash;
+    bool emitComplete = false;
+    bool emitIntegrityError = false;
+
+    {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      auto it = m_incomingTransfers.find(transferId);
+      if (it != m_incomingTransfers.end()) {
+        // ---- Streaming mode: finalize file on disk ----
+        if (it->second.streaming) {
+          if (it->second.tempFileHandle && it->second.tempFileHandle->is_open()) {
+            it->second.tempFileHandle->flush();
+            it->second.tempFileHandle->close();
+          }
+          it->second.tempFileHandle.reset();
+
+          filename = it->second.filename;
+          fromPeerId = it->second.fromPeerId.empty()
+                           ? fromPeerId
+                           : it->second.fromPeerId;
+
+          // Size verification
+          if (it->second.receivedBytes != it->second.totalSize) {
+            verified = false;
+            verificationReason = "size-mismatch";
+          }
+
+          // SHA-256 verification (read file back — one extra read but keeps code simple)
+          if (verified && !it->second.sha256Expected.empty()) {
+            actualHash = computeSHA256(it->second.tempFilePath);
+            if (!actualHash.empty() &&
+                isValidSha256Hex(it->second.sha256Expected) &&
+                actualHash != it->second.sha256Expected) {
+              verified = false;
+              verificationReason = "sha256-mismatch";
+            }
+          }
+
+          if (verified) {
+            // Move temp file to final destination (best-effort rename)
+            std::string safeName = it->second.filename;
+            // Sanitize: strip path components and dangerous chars
+            {
+              size_t sl = safeName.find_last_of("/\\");
+              if (sl != std::string::npos)
+                safeName = safeName.substr(sl + 1);
+              for (auto &c : safeName) {
+                if (c == ':' || c == '*' || c == '?' || c == '"' ||
+                    c == '<' || c == '>' || c == '|')
+                  c = '_';
+              }
+              if (safeName.empty())
+                safeName = "received_file";
+            }
+            std::string finalPath = m_downloadPath + "/" + safeName;
+            // Avoid overwriting existing files
+            if (std::ifstream(finalPath).good()) {
+              size_t dot = safeName.rfind('.');
+              std::string base =
+                  dot == std::string::npos ? safeName : safeName.substr(0, dot);
+              std::string ext =
+                  dot == std::string::npos ? "" : safeName.substr(dot);
+              int n = 1;
+              do {
+                finalPath = m_downloadPath + "/" + base + "_" +
+                            std::to_string(n++) + ext;
+              } while (std::ifstream(finalPath).good() && n < 1000);
+            }
+            it->second.finalFilePath = finalPath;
+            if (std::rename(it->second.tempFilePath.c_str(),
+                            finalPath.c_str()) != 0) {
+              // rename failed — try copy+delete
+              std::ifstream src(it->second.tempFilePath, std::ios::binary);
+              std::ofstream dst(finalPath, std::ios::binary);
+              if (src && dst) {
+                dst << src.rdbuf();
+                src.close();
+                dst.close();
+                std::remove(it->second.tempFilePath.c_str());
+              } else {
+                verified = false;
+                verificationReason = "file-save-failed";
+              }
+            }
+          } else {
+            // Verification failed — delete temp file
+            std::remove(it->second.tempFilePath.c_str());
+          }
+
+          // Send verification ack
+          if (!transferId.empty() && !fromPeerId.empty()) {
+            std::ostringstream verifyMsg;
+            verifyMsg << "{\"type\":\"relay-verified\",\"to\":\""
+                      << JsonEscape(fromPeerId) << "\",\"transferId\":\""
+                      << JsonEscape(transferId) << "\",\"ok\":"
+                      << (verified ? "true" : "false") << ",\"reason\":\""
+                      << JsonEscape(verificationReason) << "\",\"sha256\":\""
+                      << JsonEscape(actualHash) << "\"}";
+            sendMessage(verifyMsg.str());
+          }
+
+          // Callback with empty data — file is already on disk.
+          // Pass the actual saved path as filename so the bridge can show it.
+          if (m_onTransferComplete) {
+            m_onTransferComplete(
+                transferId,
+                verified ? it->second.finalFilePath : it->second.filename,
+                {} /* empty - file already on disk */, verified);
+          }
+
+          m_incomingTransfers.erase(it);
+          return; // streaming path fully handled above
+        }
+        // ---- End streaming mode ----
+
+        if (fromPeerId.empty()) {
+          fromPeerId = it->second.fromPeerId;
+        }
+        filename = it->second.filename;
+        data = it->second.data;
+        if (it->second.receivedBytes != it->second.totalSize) {
+          verified = false;
+          verificationReason = "size-mismatch";
+        }
+        actualHash = computeSHA256(it->second.data);
+        if (!it->second.sha256Expected.empty()) {
+          if (!isValidSha256Hex(it->second.sha256Expected)) {
+            verified = false;
+            verificationReason = "invalid-sha256";
+          } else if (actualHash != it->second.sha256Expected) {
+            verified = false;
+            verificationReason = "sha256-mismatch";
+          }
+          emitIntegrityError = !verified;
+        }
+
+        if (!verified && verificationReason.empty()) {
+          verificationReason = "integrity-check-failed";
+        }
+
+        emitComplete = true;
+        m_incomingTransfers.erase(it);
       }
     }
-    std::lock_guard<std::mutex> lock(m_transfersMutex);
-    auto it = m_incomingTransfers.find(transferId);
-    if (it != m_incomingTransfers.end()) {
-      // Verify integrity if hash provided
-      bool verified = true;
-      if (!it->second.sha256Expected.empty()) {
-        std::string actualHash = computeSHA256(it->second.data);
-        verified = (actualHash == it->second.sha256Expected);
-        if (!verified && m_onError) {
-          m_onError(SignalingError::IntegrityCheckFailed, "SHA-256 mismatch");
+
+    if (!transferId.empty() && !fromPeerId.empty()) {
+      std::ostringstream verifyMsg;
+      verifyMsg << "{\"type\":\"relay-verified\",\"to\":\""
+                << JsonEscape(fromPeerId) << "\",\"transferId\":\""
+                << JsonEscape(transferId) << "\",\"ok\":"
+                << (verified ? "true" : "false") << ",\"reason\":\""
+                << JsonEscape(verificationReason) << "\",\"sha256\":\""
+                << JsonEscape(actualHash) << "\"}";
+      sendMessage(verifyMsg.str());
+    }
+
+    if (emitIntegrityError && m_onError) {
+      std::string message = verificationReason.empty() ? "SHA-256 mismatch"
+                                                       : verificationReason;
+      m_onError(SignalingError::IntegrityCheckFailed, message);
+    }
+
+    if (emitComplete && m_onTransferComplete) {
+      m_onTransferComplete(transferId, filename, data, verified);
+    }
+  } else if (type == "relay-verified") {
+    std::string transferId = JsonGetStringField(message, "transferId");
+    if (transferId.empty()) {
+      return;
+    }
+
+    RelayVerificationResult result;
+    result.received = true;
+    result.ok = JsonGetBoolField(message, "ok", false);
+    result.reason = JsonGetStringField(message, "reason");
+    result.sha256 = JsonGetStringField(message, "sha256");
+
+    {
+      std::lock_guard<std::mutex> lock(m_verificationMutex);
+      m_relayVerifications[transferId] = result;
+    }
+    m_verificationCv.notify_all();
+  } else if (type == "relay-cancel") {
+    std::string transferId = JsonGetStringField(message, "transferId");
+    if (transferId.empty()) {
+      return;
+    }
+
+    RelayVerificationResult result;
+    result.received = true;
+    result.ok = false;
+    result.reason = JsonGetStringField(message, "reason");
+    if (result.reason.empty()) {
+      result.reason = "relay-cancelled";
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(m_verificationMutex);
+      m_relayVerifications[transferId] = result;
+    }
+    m_verificationCv.notify_all();
+  } else if (type == "peer-lan-updated") {
+    // A peer announced its LAN IP/port. Update local record so UI shows the LAN badge.
+    std::string updatedPeerId = JsonGetStringField(message, "peerId");
+    if (!updatedPeerId.empty() && updatedPeerId != m_peerId) {
+      std::lock_guard<std::mutex> lock(m_peersMutex);
+      for (auto &p : m_peers) {
+        if (p.id == updatedPeerId) {
+          p.isWeb = false; // has a real LAN presence
+          break;
         }
       }
-      if (m_onTransferComplete) {
-        m_onTransferComplete(transferId, it->second.filename, it->second.data,
-                             verified);
-      }
-      m_incomingTransfers.erase(it);
     }
   }
 }
@@ -1180,17 +1936,47 @@ bool WebSignalingClient::requestFileSend(const std::string &targetPeerId,
   if (!isConnected())
     return false;
 
+  {
+    std::lock_guard<std::mutex> lock(m_fileResponseMutex);
+    m_pendingFileResponses.erase(targetPeerId);
+  }
+
   std::ostringstream msg;
-  msg << "{\"type\":\"file-request\",\"to\":\"" << targetPeerId
-      << "\",\"from\":\"" << m_peerId << "\",\"files\":[";
+  msg << "{\"type\":\"file-request\",\"to\":\""
+      << JsonEscape(targetPeerId) << "\",\"files\":[";
   for (size_t i = 0; i < files.size(); i++) {
     if (i > 0)
       msg << ",";
-    msg << "{\"name\":\"" << files[i].name << "\",\"size\":" << files[i].size
-        << "}";
+    const std::string mimeType = files[i].mimeType.empty()
+                                     ? "application/octet-stream"
+                                     : files[i].mimeType;
+    msg << "{\"name\":\"" << JsonEscape(files[i].name)
+        << "\",\"size\":" << files[i].size
+        << ",\"type\":\"" << JsonEscape(mimeType)
+        << "\",\"relativePath\":\"\"}";
   }
   msg << "]}";
-  return sendMessage(msg.str());
+  if (!sendMessage(msg.str())) {
+    return false;
+  }
+
+  bool accepted = false;
+  if (!waitForFileResponse(targetPeerId,
+                           SignalingConfig::FILE_REQUEST_TIMEOUT_MS,
+                           accepted)) {
+    if (m_onError) {
+      m_onError(SignalingError::TransferFailed,
+                "Timed out waiting for file request response");
+    }
+    return false;
+  }
+
+  if (!accepted && m_onError) {
+    m_onError(SignalingError::TransferFailed,
+              "Peer rejected incoming file request");
+  }
+
+  return accepted;
 }
 
 void WebSignalingClient::acceptFileRequest(const std::string &fromPeerId) {
@@ -1211,6 +1997,7 @@ bool WebSignalingClient::sendFileViaRelay(const std::string &targetPeerId,
                                           const std::string &filename,
                                           const std::vector<uint8_t> &data,
                                           const std::string &mimeType) {
+  (void)mimeType;
   if (!isConnected())
     return false;
   if (data.size() > SignalingConfig::MAX_FILE_SIZE) {
@@ -1222,14 +2009,34 @@ bool WebSignalingClient::sendFileViaRelay(const std::string &targetPeerId,
   std::string transferId = generateUUID();
   std::string sha256 = computeSHA256(data);
 
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    TransferProgress progress;
+    progress.transferId = transferId;
+    progress.targetPeerId = targetPeerId;
+    progress.filename = filename;
+    progress.totalBytes = data.size();
+    progress.transferredBytes = 0;
+    progress.state = TransferState::InProgress;
+    progress.startTime = std::chrono::steady_clock::now();
+    progress.lastChunkTime = progress.startTime;
+    m_outgoingTransfers[transferId] = std::move(progress);
+  }
+
   // Send relay-start
   std::ostringstream startMsg;
-  startMsg << "{\"type\":\"relay-start\",\"to\":\"" << targetPeerId
-           << "\",\"transferId\":\"" << transferId << "\",\"filename\":\""
-           << filename << "\",\"size\":" << data.size() << ",\"sha256\":\""
-           << sha256 << "\"}";
-  if (!sendMessageWithRetry(startMsg.str()))
+  startMsg << "{\"type\":\"relay-start\",\"to\":\""
+           << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+           << JsonEscape(transferId) << "\",\"filename\":\""
+           << JsonEscape(filename) << "\",\"size\":" << data.size()
+           << ",\"mimeType\":\"application/octet-stream\""
+           << ",\"fileIndex\":0,\"totalFiles\":1"
+           << ",\"sha256\":\"" << JsonEscape(sha256) << "\"}";
+  if (!sendMessageWithRetry(startMsg.str())) {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    m_outgoingTransfers.erase(transferId);
     return false;
+  }
 
   // Send chunks
   size_t offset = 0;
@@ -1239,12 +2046,55 @@ bool WebSignalingClient::sendFileViaRelay(const std::string &targetPeerId,
     std::string b64 = base64Encode(data.data() + offset, chunkSize);
 
     std::ostringstream chunkMsg;
-    chunkMsg << "{\"type\":\"relay-chunk\",\"to\":\"" << targetPeerId
-             << "\",\"transferId\":\"" << transferId
+    chunkMsg << "{\"type\":\"relay-chunk\",\"to\":\""
+             << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+             << JsonEscape(transferId)
              << "\",\"offset\":" << offset << ",\"data\":\"" << b64 << "\"}";
-    if (!sendMessage(chunkMsg.str()))
+    if (!sendMessage(chunkMsg.str())) {
+      std::ostringstream cancelMsg;
+      cancelMsg << "{\"type\":\"relay-cancel\",\"to\":\""
+                << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+                << JsonEscape(transferId) << "\",\"reason\":\"send-failed\"}";
+      sendMessage(cancelMsg.str());
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      m_outgoingTransfers.erase(transferId);
       return false;
+    }
     offset += chunkSize;
+
+    TransferProgress progressSnapshot;
+    bool emitProgress = false;
+    {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      auto it = m_outgoingTransfers.find(transferId);
+      if (it != m_outgoingTransfers.end()) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsedMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second.startTime)
+                .count();
+        it->second.transferredBytes = offset;
+        it->second.lastChunkTime = now;
+        if (elapsedMs > 0) {
+          // BUG FIX (Bug W7): speedBytesPerSecond was stored as float, which
+          // overflows silently for files larger than ~16 MB/s sustained.
+          // Compute as double and cast only for storage.
+          it->second.speedBytesPerSecond =
+              static_cast<float>(static_cast<double>(offset) * 1000.0 / elapsedMs);
+        }
+        progressSnapshot = it->second;
+        emitProgress = true;
+      }
+    }
+    if (emitProgress) {
+      OnTransferProgressCallback progressCb;
+      {
+        std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+        progressCb = m_onTransferProgress;
+      }
+      if (progressCb) {
+        progressCb(progressSnapshot);
+      }
+    }
 
     // Small delay to avoid overwhelming
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -1252,9 +2102,55 @@ bool WebSignalingClient::sendFileViaRelay(const std::string &targetPeerId,
 
   // Send relay-end
   std::ostringstream endMsg;
-  endMsg << "{\"type\":\"relay-end\",\"to\":\"" << targetPeerId
-         << "\",\"transferId\":\"" << transferId << "\"}";
-  return sendMessageWithRetry(endMsg.str());
+  endMsg << "{\"type\":\"relay-end\",\"to\":\""
+         << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+         << JsonEscape(transferId) << "\"}";
+  bool ok = sendMessageWithRetry(endMsg.str());
+  RelayVerificationResult verification;
+  if (ok) {
+    verification = waitForRelayVerification(transferId, 15000);
+    ok = verification.received && verification.ok;
+  }
+
+  if (!ok && m_onError) {
+    std::string reason = verification.received
+                             ? verification.reason
+                             : "relay verification timeout";
+    if (reason.empty()) {
+      reason = "relay verification failed";
+    }
+    m_onError(SignalingError::IntegrityCheckFailed, reason);
+  }
+
+  {
+    TransferProgress finalProgress;
+    bool emitFinalProgress = false;
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    auto it = m_outgoingTransfers.find(transferId);
+    if (it != m_outgoingTransfers.end()) {
+      it->second.state = ok ? TransferState::Completed : TransferState::Failed;
+      if (!ok) {
+        it->second.errorMessage = verification.received
+                                      ? verification.reason
+                                      : "relay verification timeout";
+      }
+      finalProgress = it->second;
+      emitFinalProgress = true;
+    }
+    m_outgoingTransfers.erase(transferId);
+
+    if (emitFinalProgress) {
+      OnTransferProgressCallback progressCb;
+      {
+        std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+        progressCb = m_onTransferProgress;
+      }
+      if (progressCb) {
+        progressCb(finalProgress);
+      }
+    }
+  }
+  return ok;
 }
 
 bool WebSignalingClient::streamFileViaRelay(const std::string &targetPeerId,
@@ -1263,7 +2159,11 @@ bool WebSignalingClient::streamFileViaRelay(const std::string &targetPeerId,
   if (!file)
     return false;
 
-  size_t fileSize = file.tellg();
+  std::streampos endPos = file.tellg();
+  if (endPos < 0) {
+    return false;
+  }
+  size_t fileSize = static_cast<size_t>(endPos);
   if (fileSize > SignalingConfig::MAX_FILE_SIZE) {
     if (m_onError)
       m_onError(SignalingError::MessageTooLarge, "File too large");
@@ -1282,47 +2182,241 @@ bool WebSignalingClient::streamFileViaRelay(const std::string &targetPeerId,
   std::string transferId = generateUUID();
   std::string sha256 = computeSHA256(filePath);
 
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    TransferProgress progress;
+    progress.transferId = transferId;
+    progress.targetPeerId = targetPeerId;
+    progress.filename = filename;
+    progress.totalBytes = fileSize;
+    progress.transferredBytes = 0;
+    progress.state = TransferState::InProgress;
+    progress.startTime = std::chrono::steady_clock::now();
+    progress.lastChunkTime = progress.startTime;
+    m_outgoingTransfers[transferId] = std::move(progress);
+  }
+
   // Send relay-start
   std::ostringstream startMsg;
-  startMsg << "{\"type\":\"relay-start\",\"to\":\"" << targetPeerId
-           << "\",\"transferId\":\"" << transferId << "\",\"filename\":\""
-           << filename << "\",\"size\":" << fileSize << ",\"sha256\":\""
-           << sha256 << "\"}";
-  if (!sendMessageWithRetry(startMsg.str()))
+  startMsg << "{\"type\":\"relay-start\",\"to\":\""
+           << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+           << JsonEscape(transferId) << "\",\"filename\":\""
+           << JsonEscape(filename) << "\",\"size\":" << fileSize
+           << ",\"mimeType\":\"application/octet-stream\""
+           << ",\"fileIndex\":0,\"totalFiles\":1"
+           << ",\"sha256\":\"" << JsonEscape(sha256) << "\"}";
+  if (!sendMessageWithRetry(startMsg.str())) {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    m_outgoingTransfers.erase(transferId);
     return false;
+  }
 
   // Stream chunks from file
   char buffer[SignalingConfig::CHUNK_SIZE];
   size_t offset = 0;
   while (file && offset < fileSize) {
     file.read(buffer, SignalingConfig::CHUNK_SIZE);
-    size_t read = file.gcount();
-    if (read == 0)
+    std::streamsize readCount = file.gcount();
+    if (readCount <= 0)
       break;
+
+    size_t read = static_cast<size_t>(readCount);
 
     std::string b64 = base64Encode(reinterpret_cast<uint8_t *>(buffer), read);
 
     std::ostringstream chunkMsg;
-    chunkMsg << "{\"type\":\"relay-chunk\",\"to\":\"" << targetPeerId
-             << "\",\"transferId\":\"" << transferId
+    chunkMsg << "{\"type\":\"relay-chunk\",\"to\":\""
+             << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+             << JsonEscape(transferId)
              << "\",\"offset\":" << offset << ",\"data\":\"" << b64 << "\"}";
-    if (!sendMessage(chunkMsg.str()))
+    if (!sendMessage(chunkMsg.str())) {
+      std::ostringstream cancelMsg;
+      cancelMsg << "{\"type\":\"relay-cancel\",\"to\":\""
+                << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+                << JsonEscape(transferId) << "\",\"reason\":\"send-failed\"}";
+      sendMessage(cancelMsg.str());
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      m_outgoingTransfers.erase(transferId);
       return false;
+    }
     offset += read;
+
+    TransferProgress progressSnapshot;
+    bool emitProgress = false;
+    {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      auto it = m_outgoingTransfers.find(transferId);
+      if (it != m_outgoingTransfers.end()) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsedMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second.startTime)
+                .count();
+        it->second.transferredBytes = offset;
+        it->second.lastChunkTime = now;
+        if (elapsedMs > 0) {
+          it->second.speedBytesPerSecond = (offset * 1000.0f) / elapsedMs;
+        }
+        progressSnapshot = it->second;
+        emitProgress = true;
+      }
+    }
+    if (emitProgress) {
+      OnTransferProgressCallback progressCb;
+      {
+        std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+        progressCb = m_onTransferProgress;
+      }
+      if (progressCb) {
+        progressCb(progressSnapshot);
+      }
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
+  if (offset != fileSize || file.bad()) {
+    std::ostringstream cancelMsg;
+    cancelMsg << "{\"type\":\"relay-cancel\",\"to\":\""
+              << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+              << JsonEscape(transferId) << "\",\"reason\":\"file-read-failed\"}";
+    sendMessage(cancelMsg.str());
+
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    m_outgoingTransfers.erase(transferId);
+    return false;
+  }
+
   std::ostringstream endMsg;
-  endMsg << "{\"type\":\"relay-end\",\"to\":\"" << targetPeerId
-         << "\",\"transferId\":\"" << transferId << "\"}";
-  return sendMessageWithRetry(endMsg.str());
+  endMsg << "{\"type\":\"relay-end\",\"to\":\""
+         << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+         << JsonEscape(transferId) << "\"}";
+  bool ok = sendMessageWithRetry(endMsg.str());
+  RelayVerificationResult verification;
+  if (ok) {
+    verification = waitForRelayVerification(transferId, 15000);
+    ok = verification.received && verification.ok;
+  }
+
+  if (!ok && m_onError) {
+    std::string reason = verification.received
+                             ? verification.reason
+                             : "relay verification timeout";
+    if (reason.empty()) {
+      reason = "relay verification failed";
+    }
+    m_onError(SignalingError::IntegrityCheckFailed, reason);
+  }
+
+  {
+    TransferProgress finalProgress;
+    bool emitFinalProgress = false;
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    auto it = m_outgoingTransfers.find(transferId);
+    if (it != m_outgoingTransfers.end()) {
+      it->second.state = ok ? TransferState::Completed : TransferState::Failed;
+      if (!ok) {
+        it->second.errorMessage = verification.received
+                                      ? verification.reason
+                                      : "relay verification timeout";
+      }
+      finalProgress = it->second;
+      emitFinalProgress = true;
+    }
+    m_outgoingTransfers.erase(transferId);
+
+    if (emitFinalProgress) {
+      OnTransferProgressCallback progressCb;
+      {
+        std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+        progressCb = m_onTransferProgress;
+      }
+      if (progressCb) {
+        progressCb(finalProgress);
+      }
+    }
+  }
+  return ok;
+}
+
+bool WebSignalingClient::streamFileOnline(const std::string &targetPeerId,
+                                          const std::string &filePath) {
+  const OnlineTransportMode mode = getOnlineTransportMode();
+  if (mode == OnlineTransportMode::RelayOnly) {
+    return streamFileViaRelay(targetPeerId, filePath);
+  }
+
+  // Signaling hooks for WebRTC are available, but a native RTC data channel
+  // backend is not yet wired into this desktop build.
+  if (mode == OnlineTransportMode::PreferP2P && m_onError) {
+    m_onError(SignalingError::InvalidState,
+              "P2P transport unavailable in current build, using relay");
+  }
+  return streamFileViaRelay(targetPeerId, filePath);
+}
+
+bool WebSignalingClient::sendOffer(const std::string &targetPeerId,
+                                   const std::string &sdp) {
+  if (!isConnected() || targetPeerId.empty() || sdp.empty()) {
+    return false;
+  }
+
+  std::ostringstream msg;
+  msg << "{\"type\":\"offer\",\"to\":\"" << JsonEscape(targetPeerId)
+      << "\",\"from\":\"" << JsonEscape(m_peerId)
+      << "\",\"sdp\":\"" << JsonEscape(sdp) << "\"}";
+  return sendMessage(msg.str());
+}
+
+bool WebSignalingClient::sendAnswer(const std::string &targetPeerId,
+                                    const std::string &sdp) {
+  if (!isConnected() || targetPeerId.empty() || sdp.empty()) {
+    return false;
+  }
+
+  std::ostringstream msg;
+  msg << "{\"type\":\"answer\",\"to\":\"" << JsonEscape(targetPeerId)
+      << "\",\"from\":\"" << JsonEscape(m_peerId)
+      << "\",\"sdp\":\"" << JsonEscape(sdp) << "\"}";
+  return sendMessage(msg.str());
+}
+
+bool WebSignalingClient::sendIceCandidate(const std::string &targetPeerId,
+                                          const std::string &candidate) {
+  if (!isConnected() || targetPeerId.empty() || candidate.empty()) {
+    return false;
+  }
+
+  std::ostringstream msg;
+  msg << "{\"type\":\"ice\",\"to\":\"" << JsonEscape(targetPeerId)
+      << "\",\"from\":\"" << JsonEscape(m_peerId)
+      << "\",\"candidate\":\"" << JsonEscape(candidate) << "\"}";
+  return sendMessage(msg.str());
 }
 
 void WebSignalingClient::cancelTransfer(const std::string &transferId) {
-  std::lock_guard<std::mutex> lock(m_transfersMutex);
-  m_incomingTransfers.erase(transferId);
-  m_outgoingTransfers.erase(transferId);
+  std::string targetPeerId;
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    auto it = m_outgoingTransfers.find(transferId);
+    if (it != m_outgoingTransfers.end()) {
+      targetPeerId = it->second.targetPeerId;
+    }
+    m_incomingTransfers.erase(transferId);
+    m_outgoingTransfers.erase(transferId);
+  }
+
+  {
+    std::lock_guard<std::mutex> verificationLock(m_verificationMutex);
+    m_relayVerifications.erase(transferId);
+  }
+
+  if (!targetPeerId.empty() && isConnected()) {
+    std::ostringstream cancelMsg;
+    cancelMsg << "{\"type\":\"relay-cancel\",\"to\":\""
+              << JsonEscape(targetPeerId) << "\",\"transferId\":\""
+              << JsonEscape(transferId) << "\",\"reason\":\"manual-cancel\"}";
+    sendMessage(cancelMsg.str());
+  }
 }
 
 bool WebSignalingClient::resumeTransfer(const std::string &transferId,
@@ -1372,6 +2466,14 @@ std::vector<TransferProgress> WebSignalingClient::getAllTransfers() const {
   }
 
   return all;
+}
+
+void WebSignalingClient::setDownloadPath(const std::string &path) {
+  m_downloadPath = path;
+}
+
+std::string WebSignalingClient::getDownloadPath() const {
+  return m_downloadPath;
 }
 
 } // namespace teleport

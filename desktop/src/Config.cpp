@@ -308,7 +308,7 @@ void Config::SetDefaults() {
   darkMode_ = true;
   showNotifications_ = true;
   autoStart_ = false;
-  signalingServerUrl_ = "wss://teleport-signal.fly.dev";
+  signalingServerUrl_ = "wss://teleport-signaling.onrender.com";
 }
 
 std::string Config::GetConfigDir() {

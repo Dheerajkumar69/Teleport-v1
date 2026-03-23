@@ -13,6 +13,7 @@
 /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/install/local.dir
 /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-build/CMakeFiles/install/strip.dir
 /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/teleport_core.dir
+/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/teleport_transfer_selftest.dir
 /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/test.dir
 /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/edit_cache.dir
 /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core/CMakeFiles/rebuild_cache.dir

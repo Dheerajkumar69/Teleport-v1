@@ -98,3 +98,14 @@ if(GTest_FOUND)
     include(GoogleTest)
     gtest_discover_tests(teleport_tests)
 endif()
+
+# Always-on transfer safety self-test (runs even when GTest is unavailable)
+add_executable(teleport_transfer_selftest
+    tests/test_transfer_bulletproof.cpp
+)
+
+target_link_libraries(teleport_transfer_selftest PRIVATE
+    teleport_core
+)
+
+add_test(NAME teleport_transfer_selftest COMMAND teleport_transfer_selftest)

@@ -70,7 +70,9 @@ Result<void> TransferManager::send_files(
             ChunkHeader header;
             header.file_id = file.id;
             header.chunk_id = reader.current_chunk() - 1;
-            header.offset = static_cast<uint32_t>((header.chunk_id) * m_config.chunk_size);
+            // BUG FIX (Bug 3): Use uint64_t multiplication to avoid overflow
+            // for files larger than ~4 GB.
+            header.offset = static_cast<uint64_t>(header.chunk_id) * m_config.chunk_size;
             header.size = static_cast<uint32_t>(bytes_read);
             
             // Send header
@@ -98,9 +100,15 @@ Result<void> TransferManager::send_files(
             
             if (elapsed_ms > 0) {
                 stats.speed_bps = (stats.bytes_transferred * 1000.0) / elapsed_ms;
-                stats.eta_seconds = static_cast<int32_t>(
-                    (stats.bytes_total - stats.bytes_transferred) / stats.speed_bps
-                );
+                // BUG FIX (Bug 7): guard division so we never divide-by-zero
+                // when speed hasn't been established yet.
+                if (stats.speed_bps > 0) {
+                    stats.eta_seconds = static_cast<int32_t>(
+                        (stats.bytes_total - stats.bytes_transferred) / stats.speed_bps
+                    );
+                } else {
+                    stats.eta_seconds = 0;
+                }
             }
             
             stats.last_update = now;
@@ -170,13 +178,23 @@ Result<void> TransferManager::receive_files(
             }
             
             auto header = ChunkHeader::deserialize(header_buf);
-            
+
             if (header.file_id != file.id) {
                 return make_error(TELEPORT_ERROR_PROTOCOL, "Unexpected file ID in chunk");
             }
-            
+
+            // BUG FIX (Bug 8): reject oversized chunks BEFORE reading any data.
+            // If we only read buffer.size() bytes but header.size is larger, the
+            // remaining bytes sit in the TCP stream and permanently de-sync
+            // all subsequent chunk reads.
+            if (header.size > static_cast<uint32_t>(buffer.size())) {
+                return make_error(TELEPORT_ERROR_PROTOCOL,
+                    "Chunk size " + std::to_string(header.size) +
+                    " exceeds buffer " + std::to_string(buffer.size()));
+            }
+
             // Receive chunk data
-            size_t to_read = std::min(static_cast<size_t>(header.size), buffer.size());
+            size_t to_read = static_cast<size_t>(header.size);
             recv_result = socket.recv_all(buffer.data(), to_read);
             if (!recv_result) {
                 return recv_result.error();
@@ -199,9 +217,14 @@ Result<void> TransferManager::receive_files(
             
             if (elapsed_ms > 0) {
                 stats.speed_bps = (stats.bytes_transferred * 1000.0) / elapsed_ms;
-                stats.eta_seconds = static_cast<int32_t>(
-                    (stats.bytes_total - stats.bytes_transferred) / stats.speed_bps
-                );
+                // BUG FIX (Bug 7): same guard on receiver side
+                if (stats.speed_bps > 0) {
+                    stats.eta_seconds = static_cast<int32_t>(
+                        (stats.bytes_total - stats.bytes_transferred) / stats.speed_bps
+                    );
+                } else {
+                    stats.eta_seconds = 0;
+                }
             }
             
             stats.last_update = now;

@@ -31,4 +31,6 @@ void PlayNotificationSound() {
   }).detach();
 }
 
+bool IsSoundSupported() { return true; }
+
 } // namespace teleport::ui

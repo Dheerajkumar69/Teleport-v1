@@ -453,6 +453,11 @@ TELEPORT_API TeleportTransferState teleport_transfer_get_state(TeleportTransfer*
     return static_cast<TeleportTransferState>(transfer->client->state());
 }
 
+TELEPORT_API void teleport_transfer_destroy(TeleportTransfer* transfer) {
+    if (!transfer) return;
+    delete transfer;
+}
+
 /* ============================================================================
  * Utility Functions
  * ============================================================================ */

@@ -18,9 +18,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <condition_variable>
 #include <functional>
 #include <map>
 #include <memory>
+#include <fstream>
 #include <mutex>
 #include <queue>
 #include <string>
@@ -32,7 +34,7 @@ namespace teleport {
 // ============ Configuration Constants ============
 struct SignalingConfig {
   // Connection settings
-  static constexpr int CONNECT_TIMEOUT_MS = 10000;
+  static constexpr int CONNECT_TIMEOUT_MS = 35000; // Render free-tier cold-start can take ~30s
   static constexpr int READ_TIMEOUT_MS = 30000;
   static constexpr int WRITE_TIMEOUT_MS = 10000;
   static constexpr int HEARTBEAT_INTERVAL_MS = 15000;
@@ -51,7 +53,15 @@ struct SignalingConfig {
   // File transfer settings
   static constexpr size_t CHUNK_SIZE = 64 * 1024; // 64KB chunks
   static constexpr size_t MAX_FILE_SIZE = 2ULL * 1024 * 1024 * 1024; // 2GB
+  static constexpr size_t STREAM_THRESHOLD = 8 * 1024 * 1024; // 8 MB - files above this are streamed to disk
   static constexpr int TRANSFER_TIMEOUT_MS = 300000; // 5 minutes
+  static constexpr int FILE_REQUEST_TIMEOUT_MS = 15000;
+};
+
+enum class OnlineTransportMode {
+  Auto,
+  RelayOnly,
+  PreferP2P
 };
 
 // ============ Connection State ============
@@ -94,6 +104,7 @@ struct FileInfo {
 // ============ Transfer Progress ============
 struct TransferProgress {
   std::string transferId;
+  std::string targetPeerId;
   std::string filename;
   size_t totalBytes = 0;
   size_t transferredBytes = 0;
@@ -125,6 +136,19 @@ struct RelayTransfer {
   std::string sha256Expected;
   TransferState state = TransferState::Pending;
   std::chrono::steady_clock::time_point lastActivity;
+
+  // Streaming mode: large files are written directly to disk rather than buffered in RAM
+  bool streaming = false;
+  std::string tempFilePath;                        // .__tmp_<transferId> during reception
+  std::string finalFilePath;                       // destination after successful verify
+  std::shared_ptr<std::ofstream> tempFileHandle;  // file handle while streaming
+};
+
+struct RelayVerificationResult {
+  bool received = false;
+  bool ok = false;
+  std::string reason;
+  std::string sha256;
 };
 
 // ============ Error Codes ============
@@ -158,6 +182,12 @@ using OnTransferProgressCallback =
 using OnTransferCompleteCallback = std::function<void(
     const std::string &transferId, const std::string &filename,
     const std::vector<uint8_t> &data, bool verified)>;
+using OnOfferCallback =
+  std::function<void(const std::string &fromId, const std::string &sdp)>;
+using OnAnswerCallback =
+  std::function<void(const std::string &fromId, const std::string &sdp)>;
+using OnIceCandidateCallback =
+  std::function<void(const std::string &fromId, const std::string &candidate)>;
 using OnErrorCallback =
     std::function<void(SignalingError error, const std::string &message)>;
 
@@ -211,6 +241,28 @@ public:
   bool streamFileViaRelay(const std::string &targetPeerId,
                           const std::string &filePath);
 
+  // Auto transport path used by desktop online mode.
+  bool streamFileOnline(const std::string &targetPeerId,
+                        const std::string &filePath);
+
+  // WebRTC signaling envelope methods.
+  bool sendOffer(const std::string &targetPeerId, const std::string &sdp);
+  bool sendAnswer(const std::string &targetPeerId, const std::string &sdp);
+  bool sendIceCandidate(const std::string &targetPeerId,
+                        const std::string &candidate);
+
+  void setOnlineTransportMode(OnlineTransportMode mode) {
+    m_onlineTransportMode = mode;
+  }
+  OnlineTransportMode getOnlineTransportMode() const {
+    return m_onlineTransportMode.load();
+  }
+
+  /** Set the directory where received files are saved.
+   *  Must be called before the first relay-start arrives. Thread-safe. */
+  void setDownloadPath(const std::string &path);
+  std::string getDownloadPath() const;
+
   // Cancel ongoing transfer
   void cancelTransfer(const std::string &transferId);
 
@@ -229,6 +281,9 @@ public:
   void setOnFileRequest(OnFileRequestCallback cb);
   void setOnTransferProgress(OnTransferProgressCallback cb);
   void setOnTransferComplete(OnTransferCompleteCallback cb);
+  void setOnOffer(OnOfferCallback cb);
+  void setOnAnswer(OnAnswerCallback cb);
+  void setOnIceCandidate(OnIceCandidateCallback cb);
   void setOnError(OnErrorCallback cb);
 
 private:
@@ -237,15 +292,21 @@ private:
   void processMessages();
   void heartbeatLoop();
   void cleanupStaleTransfers();
+  void scheduleReconnect();
 
   bool connectInternal();
   void handleMessage(const std::string &message);
   bool sendMessage(const std::string &message);
   bool sendMessageWithRetry(const std::string &message, int maxRetries = 3);
+  RelayVerificationResult waitForRelayVerification(const std::string &transferId,
+                                                   int timeoutMs);
+  bool waitForFileResponse(const std::string &targetPeerId, int timeoutMs,
+                           bool &accepted);
 
   // Message validation
   bool validateMessage(const std::string &message);
   bool validateJsonSchema(const std::string &json, const std::string &type);
+  static bool isValidSha256Hex(const std::string &value);
 
   // Socket operations with timeouts
   bool setSocketTimeout(int socket, int timeoutMs, bool isRead);
@@ -278,22 +339,30 @@ private:
   std::unique_ptr<std::thread> m_reconnectThread;
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_stopRequested{false};
+  std::atomic<bool> m_reconnectInProgress{false};
 
   // ============ Thread Safety ============
   mutable std::mutex m_stateMutex;
   mutable std::mutex m_peersMutex;
   mutable std::mutex m_transfersMutex;
+  mutable std::mutex m_verificationMutex;
   mutable std::mutex m_sendMutex;
   mutable std::mutex m_callbackMutex;
+  mutable std::mutex m_fileResponseMutex;
+  std::condition_variable m_verificationCv;
+  std::condition_variable m_fileResponseCv;
 
   // ============ Data ============
   std::vector<WebPeer> m_peers;
   std::map<std::string, RelayTransfer> m_incomingTransfers;
   std::map<std::string, TransferProgress> m_outgoingTransfers;
+  std::map<std::string, RelayVerificationResult> m_relayVerifications;
+  std::map<std::string, bool> m_pendingFileResponses;
 
   // ============ Buffers ============
   std::vector<uint8_t> m_receiveBuffer;
   std::queue<std::string> m_sendQueue;
+  std::atomic<OnlineTransportMode> m_onlineTransportMode{OnlineTransportMode::Auto};
 
   // ============ Callbacks ============
   OnConnectedCallback m_onConnected;
@@ -303,6 +372,9 @@ private:
   OnFileRequestCallback m_onFileRequest;
   OnTransferProgressCallback m_onTransferProgress;
   OnTransferCompleteCallback m_onTransferComplete;
+  OnOfferCallback m_onOffer;
+  OnAnswerCallback m_onAnswer;
+  OnIceCandidateCallback m_onIceCandidate;
   OnErrorCallback m_onError;
 
   // ============ Timing ============
@@ -311,6 +383,7 @@ private:
 
   // ============ Socket Handle ============
   int m_socket = -1;
+  std::string m_downloadPath;
   bool m_useTLS = false;
   void *m_sslContext = nullptr; // OpenSSL SSL_CTX*
   void *m_ssl = nullptr;        // OpenSSL SSL*

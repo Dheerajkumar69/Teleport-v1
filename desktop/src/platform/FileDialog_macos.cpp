@@ -42,18 +42,25 @@ static std::string ExecuteCommand(const std::string &cmd) {
   return result;
 }
 
-std::vector<std::string> OpenFileDialog(const std::string &title) {
+std::vector<std::string> OpenFileDialog(const std::string &title,
+                                        bool multiple) {
   std::vector<std::string> result;
 
-  // Use osascript to show native file picker
-  std::string cmd =
-      "osascript -e 'set theFiles to choose file with prompt \"" + title +
-      "\" with multiple selections allowed' "
-      "-e 'set output to \"\"' "
-      "-e 'repeat with theFile in theFiles' "
-      "-e 'set output to output & POSIX path of theFile & \"\\n\"' "
-      "-e 'end repeat' "
-      "-e 'return output' 2>/dev/null";
+  std::string cmd;
+  if (multiple) {
+    // Use osascript to show native multi-file picker.
+    cmd = "osascript -e 'set theFiles to choose file with prompt \"" + title +
+          "\" with multiple selections allowed' "
+          "-e 'set output to \"\"' "
+          "-e 'repeat with theFile in theFiles' "
+          "-e 'set output to output & POSIX path of theFile & \"\\n\"' "
+          "-e 'end repeat' "
+          "-e 'return output' 2>/dev/null";
+  } else {
+    // Use osascript to show native single-file picker.
+    cmd = "osascript -e 'POSIX path of (choose file with prompt \"" + title +
+          "\")' 2>/dev/null";
+  }
 
   std::string output = ExecuteCommand(cmd);
 
@@ -74,6 +81,24 @@ std::string SelectFolderDialog(const std::string &title) {
   // Use osascript to show native folder picker
   std::string cmd =
       "osascript -e 'POSIX path of (choose folder with prompt \"" + title +
+      "\")' 2>/dev/null";
+
+  std::string result = ExecuteCommand(cmd);
+
+  // Remove trailing slash if present
+  if (!result.empty() && result.back() == '/') {
+    result.pop_back();
+  }
+
+  return result;
+}
+
+std::string SaveFileDialog(const std::string &title,
+                           const std::string &defaultName) {
+  (void)defaultName;
+
+  std::string cmd =
+      "osascript -e 'POSIX path of (choose file name with prompt \"" + title +
       "\")' 2>/dev/null";
 
   std::string result = ExecuteCommand(cmd);

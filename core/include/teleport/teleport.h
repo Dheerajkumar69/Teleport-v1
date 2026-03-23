@@ -399,6 +399,12 @@ TELEPORT_API TeleportError teleport_transfer_cancel(TeleportTransfer* transfer);
  */
 TELEPORT_API TeleportTransferState teleport_transfer_get_state(TeleportTransfer* transfer);
 
+/**
+ * @brief Destroy a transfer handle and free associated resources
+ * @param transfer Transfer handle (safe to pass NULL)
+ */
+TELEPORT_API void teleport_transfer_destroy(TeleportTransfer* transfer);
+
 /* ============================================================================
  * Utility Functions
  * ============================================================================ */

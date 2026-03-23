@@ -63,6 +63,11 @@ function base64DecodedLength(str) {
     return (str.length * 3) / 4 - padding;
 }
 
+/** Returns true when str is a canonical 64-char hex SHA-256 digest. */
+function isValidSha256Hex(str) {
+    return typeof str === 'string' && /^[a-fA-F0-9]{64}$/.test(str);
+}
+
 // ============================================================================
 // TURN CREDENTIAL CACHE
 // To rotate TURN credentials: set TURN_USERNAME and TURN_CREDENTIAL env vars.
@@ -125,7 +130,9 @@ const server = http.createServer((req, res) => {
             status: 'ok',
             service: 'teleport-signaling',
             peers: peers.size,
-            rooms: rooms.size
+            rooms: rooms.size,
+            now: Date.now(),
+            uptimeSec: Math.floor(process.uptime())
         }));
     }
 
@@ -354,7 +361,8 @@ wss.on('connection', (ws, req) => {
 
             case 'relay-start': {
                 // Start a relay transfer
-                const { to, transferId, filename, size, mimeType, fileIndex, totalFiles } = message;
+                const { to, transferId, filename, size, mimeType, fileIndex, totalFiles, sha256 } = message;
+                const normalizedSha = isValidSha256Hex(sha256) ? sha256.toLowerCase() : null;
                 console.log(`[${peerId}] Starting relay transfer to ${to}: ${filename}`);
                 if (to && peers.has(to)) {
                     sendToPeer(to, {
@@ -364,6 +372,7 @@ wss.on('connection', (ws, req) => {
                         filename,
                         size,
                         mimeType,
+                        sha256: normalizedSha,
                         fileIndex,
                         totalFiles
                     });
@@ -417,12 +426,31 @@ wss.on('connection', (ws, req) => {
 
             case 'relay-cancel': {
                 // Cancel relay transfer
-                const { to, transferId } = message;
+                const { to, transferId, reason } = message;
                 if (to && peers.has(to)) {
                     sendToPeer(to, {
                         type: 'relay-cancel',
                         from: peerId,
-                        transferId
+                        transferId,
+                        reason: typeof reason === 'string' ? reason : null
+                    });
+                }
+                break;
+            }
+
+            case 'relay-verified': {
+                // Relay receiver integrity acknowledgement back to sender
+                const { to, transferId, ok, reason, sha256 } = message;
+                const normalizedSha = isValidSha256Hex(sha256) ? sha256.toLowerCase() : null;
+
+                if (to && peers.has(to)) {
+                    sendToPeer(to, {
+                        type: 'relay-verified',
+                        from: peerId,
+                        transferId,
+                        ok: !!ok,
+                        reason: typeof reason === 'string' ? reason : '',
+                        sha256: normalizedSha
                     });
                 }
                 break;

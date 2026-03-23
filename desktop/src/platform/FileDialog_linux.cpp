@@ -36,9 +36,21 @@ std::string ExecuteCommand(const std::string &cmd) {
   return result;
 }
 
-bool HasZenity() { return system("which zenity > /dev/null 2>&1") == 0; }
+bool HasZenity() {
+  static int cached = -1;
+  if (cached < 0) {
+    cached = (system("which zenity > /dev/null 2>&1") == 0) ? 1 : 0;
+  }
+  return cached == 1;
+}
 
-bool HasKdialog() { return system("which kdialog > /dev/null 2>&1") == 0; }
+bool HasKdialog() {
+  static int cached = -1;
+  if (cached < 0) {
+    cached = (system("which kdialog > /dev/null 2>&1") == 0) ? 1 : 0;
+  }
+  return cached == 1;
+}
 
 } // anonymous namespace
 

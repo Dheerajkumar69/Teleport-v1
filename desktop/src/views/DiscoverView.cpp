@@ -18,6 +18,7 @@ namespace teleport::ui {
 static const char *OS_LABEL_WINDOWS = "W";
 static const char *OS_LABEL_ANDROID = "A";
 static const char *OS_LABEL_MACOS = "M";
+static const char *OS_LABEL_LINUX = "L";
 static const char *OS_LABEL_UNKNOWN = "?";
 
 // Celebration colors - vibrant confetti palette
@@ -187,7 +188,7 @@ void DiscoverView::Render() {
 void DiscoverView::RenderHeader() {
   ImGui::PushFont(theme_->GetHeadingFont());
   ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary),
-                     "Send Files");
+                     "Discover Devices");
   ImGui::PopFont();
 }
 
@@ -263,30 +264,70 @@ void DiscoverView::RenderStatusBar() {
                        devices.size() == 1 ? "" : "s");
   }
 
-  // Web connection status indicator
+  // Web connection status with connect button
   ImGui::SameLine(0, 30);
   ImGui::SetCursorPosY(ImGui::GetCursorPosY());
 
   bool webConnected = bridge_->IsWebSignalingConnected();
   ImVec4 webStatusColor = webConnected
-                              ? ImVec4(0.2f, 0.7f, 0.5f, 1.0f)   // Green
-                              : ImVec4(0.5f, 0.5f, 0.55f, 1.0f); // Gray
+                              ? ImVec4(0.2f, 0.7f, 0.5f, 1.0f)
+                              : ImVec4(0.5f, 0.5f, 0.55f, 1.0f);
 
-  // Draw small status dot
+  // Pulsing dot for connected state
   ImDrawList *statusDL = ImGui::GetWindowDrawList();
   ImVec2 statusPos = ImGui::GetCursorScreenPos();
+  if (webConnected) {
+    float pulse = (std::sin(pulseAnimation_) + 1.0f) * 0.5f;
+    ImU32 glowC = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(0.2f, 0.7f, 0.5f, 0.3f + pulse * 0.2f));
+    statusDL->AddCircleFilled(ImVec2(statusPos.x + 6, statusPos.y + 8),
+                              7.0f, glowC);
+  }
   statusDL->AddCircleFilled(ImVec2(statusPos.x + 6, statusPos.y + 8), 4.0f,
                             ImGui::ColorConvertFloat4ToU32(webStatusColor));
 
   ImGui::Dummy(ImVec2(16, 0));
   ImGui::SameLine();
-  ImGui::TextColored(webStatusColor, webConnected ? "Cloud" : "Offline");
+  ImGui::TextColored(webStatusColor, webConnected ? "Online" : "Offline");
+
+  // Connect/disconnect button
+  ImGui::SameLine(0, 10);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 7);
+
+  if (webConnected) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.3f, 0.25f, 0.7f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(0.3f, 0.4f, 0.35f, 0.9f));
+    if (ImGui::Button("Disconnect##web", ImVec2(0, 28))) {
+      bridge_->DisconnectFromWebSignaling();
+    }
+    ImGui::PopStyleColor(2);
+  } else {
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImVec4(0.15f, 0.35f, 0.55f, 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(0.2f, 0.45f, 0.7f, 0.9f));
+    const bool isConnecting = bridge_->IsSignalingConnecting();
+    if (isConnecting) {
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.35f, 0.55f, 0.5f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.15f, 0.35f, 0.55f, 0.5f));
+      ImGui::Button("Connecting...##web", ImVec2(0, 28));
+      ImGui::PopStyleColor(2);
+    } else {
+      if (ImGui::Button("Go Online##web", ImVec2(0, 28))) {
+        bridge_->TriggerReconnect();
+      }
+    }
+    ImGui::PopStyleColor(2);
+  }
 
   ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 20);
 }
 
 void DiscoverView::RenderDeviceGrid() {
   auto devices = bridge_->GetDevices();
+  constexpr size_t kMaxAnimatedCards = 32;
+  const size_t renderCount = std::min(devices.size(), kMaxAnimatedCards);
 
   // Calculate grid layout
   float availableWidth = ImGui::GetContentRegionAvail().x - 30;
@@ -299,7 +340,7 @@ void DiscoverView::RenderDeviceGrid() {
                     ImGuiWindowFlags_NoBackground);
 
   int col = 0;
-  for (size_t i = 0; i < devices.size(); i++) {
+  for (size_t i = 0; i < renderCount; i++) {
     if (col > 0) {
       ImGui::SameLine(0, cardSpacing);
     }
@@ -310,6 +351,13 @@ void DiscoverView::RenderDeviceGrid() {
     if (col >= columns) {
       col = 0;
     }
+  }
+
+  if (devices.size() > renderCount) {
+    ImGui::Spacing();
+    ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextSecondary),
+                       "+%zu more devices hidden (UI limit %zu)",
+                       devices.size() - renderCount, kMaxAnimatedCards);
   }
 
   ImGui::EndChild();
@@ -378,9 +426,12 @@ void DiscoverView::RenderDeviceCard(const DeviceInfo &device, int index) {
              device.os == "Darwin") {
     osColor = ImVec4(0.8f, 0.8f, 0.82f, 1.0f); // Apple silver
     osLabel = OS_LABEL_MACOS;
+  } else if (device.os == "Linux" || device.os.find("linux") != std::string::npos) {
+    osColor = ImVec4(0.9f, 0.5f, 0.1f, 1.0f); // Orange for Linux
+    osLabel = OS_LABEL_LINUX;
   } else {
     osColor = theme_->GetColorVec(ThemeColor::Primary);
-    osLabel = OS_LABEL_WINDOWS; // Default to Windows
+    osLabel = OS_LABEL_UNKNOWN;
   }
 
   // OS Badge - circular background with letter

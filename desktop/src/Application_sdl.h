@@ -46,7 +46,6 @@ private:
   void RenderUI();
   void RenderSidebar();
   void RenderMainContent();
-  void RenderSettingsPlaceholder();
   void RenderGlobalIncomingDialog();
 
   // Event handling

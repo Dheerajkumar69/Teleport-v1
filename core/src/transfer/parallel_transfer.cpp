@@ -283,7 +283,8 @@ void ParallelTransfer::sender_worker(size_t stream_id) {
         ChunkHeader header;
         header.file_id = work.file_id;
         header.chunk_id = work.chunk_id;
-        header.offset = static_cast<uint32_t>(work.offset % UINT32_MAX);
+        // BUG FIX (Bug 3): use uint64_t arithmetic; do NOT truncate with % UINT32_MAX.
+        header.offset = work.offset;
         header.size = work.size;
         
         uint8_t header_buf[ChunkHeader::HEADER_SIZE];
@@ -307,8 +308,8 @@ void ParallelTransfer::sender_worker(size_t stream_id) {
             m_cancelled.store(true);
             break;
         }
-        
-        update_stats(work.size);
+
+        update_stats(work.size, true);  // BUG FIX (Bug 4): pass is_sending=true
     }
     
     LOG_DEBUG("Sender worker ", stream_id, " finished");
@@ -379,32 +380,39 @@ void ParallelTransfer::receiver_worker(size_t stream_id) {
             }
         }
         
-        update_stats(header.size);
+        update_stats(header.size, false);  // BUG FIX (Bug 4): pass is_sending=false
     }
     
     LOG_DEBUG("Receiver worker ", stream_id, " finished");
 }
 
-void ParallelTransfer::update_stats(uint64_t bytes) {
+void ParallelTransfer::update_stats(uint64_t bytes, bool is_sending) {
     std::lock_guard<std::mutex> lock(m_stats_mutex);
-    
-    m_stats.bytes_sent += bytes;
-    m_stats.bytes_received += bytes;
+
+    // BUG FIX (Bug 4): increment only the correct directional counter.
+    if (is_sending) {
+        m_stats.bytes_sent += bytes;
+    } else {
+        m_stats.bytes_received += bytes;
+    }
     m_stats.chunks_completed++;
-    
+
     auto now = Clock::now();
     auto elapsed_ms = std::chrono::duration_cast<Milliseconds>(
         now - m_stats.start_time
     ).count();
-    
+
     if (elapsed_ms > 0) {
-        m_stats.speed_bps = (m_stats.bytes_sent * 1000.0) / elapsed_ms;
-        uint64_t remaining = m_stats.bytes_total - m_stats.bytes_sent;
+        // Use the directional bytes for speed so both sides are correct.
+        uint64_t bytes_transferred = is_sending ? m_stats.bytes_sent : m_stats.bytes_received;
+        m_stats.speed_bps = (bytes_transferred * 1000.0) / elapsed_ms;
+        uint64_t remaining = m_stats.bytes_total > bytes_transferred
+            ? m_stats.bytes_total - bytes_transferred : 0;
         if (m_stats.speed_bps > 0) {
             m_stats.eta_seconds = static_cast<int>(remaining / m_stats.speed_bps);
         }
     }
-    
+
     if (m_progress_cb) {
         m_progress_cb(m_stats);
     }

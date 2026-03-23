@@ -147,7 +147,7 @@ public:
   /**
    * @brief Set download directory
    */
-  void SetDownloadPath(const std::string &path) { downloadPath_ = path; }
+  void SetDownloadPath(const std::string &path);
 
   /**
    * @brief Set device name
@@ -209,6 +209,9 @@ public:
   void OnDeviceLost(const char *deviceId);
   void OnProgress(const TeleportProgress *progress);
   void OnComplete(TeleportError error);
+  void OnProgress(const std::string &transferId,
+                  const TeleportProgress *progress);
+  void OnComplete(const std::string &transferId, TeleportError error);
   int OnIncoming(const TeleportDevice *sender, const TeleportFileInfo *files,
                  size_t count);
 
@@ -257,7 +260,7 @@ public:
    * @brief Connect to web signaling server
    */
   bool ConnectToWebSignaling(
-      const std::string &serverUrl = "ws://teleport-signaling.onrender.com");
+      const std::string &serverUrl = "wss://teleport-signaling.onrender.com");
 
   /**
    * @brief Disconnect from web signaling
@@ -274,6 +277,41 @@ public:
    */
   bool SendFileToWebPeer(const std::string &peerId,
                          const std::string &filePath);
+
+  /**
+   * @brief Set preferred signaling server URL
+   */
+  void SetSignalingServerUrl(const std::string &url);
+
+  /**
+   * @brief Get preferred signaling server URL
+   */
+  std::string GetSignalingServerUrl() const { return signalingServerUrl_; }
+
+  /**
+   * @brief Connect to preferred signaling endpoints
+   */
+  bool ConnectToPreferredSignaling();
+
+  /**
+   * @brief Trigger an immediate reconnect attempt (UI-thread safe).
+   *
+   * Resets the back-off timer so Update() will spawn a background
+   * connection thread on its next tick.  Unlike ConnectToPreferredSignaling()
+   * this function never blocks and never touches webSignaling_ directly,
+   * making it safe to call from any thread including the render loop.
+   */
+  void TriggerReconnect() {
+    if (isSignalingConnecting_.load())
+      return; // Already in-flight – no-op
+    firstReconnectAttempt_.store(true);
+    lastReconnectAttempt_ = std::chrono::steady_clock::time_point{};
+  }
+
+  /**
+   * @brief Returns true while a background connection attempt is in flight.
+   */
+  bool IsSignalingConnecting() const { return isSignalingConnecting_.load(); }
 
 private:
   TeleportEngine *engine_ = nullptr;
@@ -295,7 +333,12 @@ private:
 
   // Thread management for safe shutdown
   mutable std::mutex threadsMutex_;
-  std::vector<std::thread> activeThreads_;
+  struct TransferThreadHandle {
+    std::thread worker;
+    std::shared_ptr<std::atomic<bool>> done;
+  };
+  std::vector<TransferThreadHandle> activeThreads_;
+  std::unique_ptr<std::thread> signalingConnectThread_;
   void CleanupFinishedThreads();
 
   mutable std::mutex requestMutex_;
@@ -307,9 +350,13 @@ private:
 
   std::string downloadPath_;
   std::string deviceName_;
+  std::string signalingServerUrl_ = "wss://teleport-signaling.onrender.com";
 
   // Animation state
   float lastUpdateTime_ = 0.0f;
+  std::chrono::steady_clock::time_point lastReconnectAttempt_{};
+  std::atomic<bool> firstReconnectAttempt_{true};
+  std::atomic<bool> isSignalingConnecting_{false};
 
   // QR Pairing state
   TeleportQrPairingInfo qrInfo_ = {};
@@ -324,6 +371,9 @@ private:
   std::atomic<bool> webSignalingConnected_{false};
   mutable std::mutex webPeersMutex_;
   std::vector<DeviceInfo> webPeers_;
+
+  mutable std::mutex receiveTransferMutex_;
+  std::string activeReceiveTransferId_;
 
   // Constants for timeouts and limits
   static constexpr int kMaxTransferThreads = 8;

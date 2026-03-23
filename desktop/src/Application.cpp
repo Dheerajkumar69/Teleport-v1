@@ -62,8 +62,13 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow) {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.IniFilename = nullptr; // Disable imgui.ini
 
+  // Initialize config (load saved settings)
+  config_ = std::make_unique<Config>();
+  config_->Load();
+
   // Initialize theme and load fonts
   theme_ = std::make_unique<Theme>();
+  theme_->SetDarkMode(config_->GetDarkMode()); // Apply saved dark mode
   theme_->Apply();
   theme_->LoadFonts(io);
 
@@ -73,14 +78,21 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow) {
 
   // Initialize Teleport bridge
   bridge_ = std::make_unique<TeleportBridge>();
-  bridge_->Initialize();
+  bridge_->SetDownloadPath(config_->GetDownloadPath());
+  bridge_->SetSignalingServerUrl(config_->GetSignalingServerUrl());
+  if (!bridge_->Initialize()) {
+    fprintf(stderr, "Warning: TeleportBridge initialization failed. Some "
+                    "features may not work.\n");
+    // Continue anyway - core UI will still function
+  }
 
   // Initialize all 5 views
   discoverView_ = std::make_unique<DiscoverView>(bridge_.get(), theme_.get());
   sendView_ = std::make_unique<SendView>(bridge_.get(), theme_.get());
   receiveView_ = std::make_unique<ReceiveView>(bridge_.get(), theme_.get());
   transfersView_ = std::make_unique<TransfersView>(bridge_.get(), theme_.get());
-  settingsView_ = std::make_unique<SettingsView>(bridge_.get(), theme_.get());
+  settingsView_ = std::make_unique<SettingsView>(bridge_.get(), theme_.get(),
+                                                 config_.get());
 
   // Apply blur effect
   EnableBlurBehind();
@@ -132,6 +144,9 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
   // Enable rounded corners on Windows 11
   int cornerPreference = 2;
   DwmSetWindowAttribute(hwnd_, 33, &cornerPreference, sizeof(cornerPreference));
+
+  // Enable shell drag-and-drop notifications (WM_DROPFILES).
+  DragAcceptFiles(hwnd_, TRUE);
 
   ShowWindow(hwnd_, nCmdShow);
   UpdateWindow(hwnd_);
@@ -273,6 +288,10 @@ int Application::Run() {
       if (msg.message == WM_QUIT) {
         return (int)msg.wParam;
       }
+    }
+
+    if (bridge_) {
+      bridge_->Update();
     }
 
     // Update all views

@@ -7,6 +7,8 @@
 #include "utils/logger.hpp"
 #include "utils/sanitize.hpp"
 
+#include <limits>
+
 namespace {
     // Timeout constants (milliseconds)
     constexpr int HANDSHAKE_TIMEOUT_MS = 30000;  // 30 seconds
@@ -59,6 +61,11 @@ Result<void> ControlClient::send_files(
         info.path = path;
         info.name = pal::get_filename(path);
         info.size = pal::file_size(path);
+        if (info.size > std::numeric_limits<uint32_t>::max()) {
+            return make_error(TELEPORT_ERROR_NOT_SUPPORTED,
+                              "File too large for current chunk header format: " +
+                                  info.name);
+        }
         info.total_chunks = static_cast<uint32_t>((info.size + m_config.chunk_size - 1) / m_config.chunk_size);
         
         m_files.push_back(info);
@@ -349,7 +356,9 @@ Result<void> ControlClient::transfer_file(const FileInfo& file) {
         ChunkHeader header;
         header.file_id = file.id;
         header.chunk_id = chunk_id++;
-        header.offset = static_cast<uint32_t>(file.size - bytes_remaining);
+        // BUG FIX (Bug 3): use uint64_t arithmetic so files > 4 GB
+        // are not silently corrupted by overflow.
+        header.offset = static_cast<uint64_t>(file.size - bytes_remaining);
         header.size = static_cast<uint32_t>(bytes_read);
         
         // Send header

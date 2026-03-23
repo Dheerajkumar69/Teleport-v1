@@ -188,25 +188,35 @@ void UdpListener::stop() {
 }
 
 void UdpListener::listen_loop() {
-    std::vector<uint8_t> buffer(1024);  // Max packet size
-    
+    // BUG FIX (Bug 5): 4096 bytes is the safe practical limit for UDP
+    // datagrams on LAN; 1024 bytes silently truncated long device names.
+    std::vector<uint8_t> buffer(4096);
+
     while (m_running.load()) {
         std::string sender_ip;
         uint16_t sender_port;
-        
+
         auto result = m_socket->recv_from(
             buffer.data(), buffer.size(),
             sender_ip, sender_port
         );
-        
+
         if (!result) {
             // Timeout is expected, just continue
             continue;
         }
-        
+
         size_t len = *result;
         if (len == 0) continue;
-        
+
+        // Guard: if the received length equals the buffer size we may have
+        // truncated the packet.  Drop it to avoid parsing corrupt JSON.
+        if (len >= buffer.size()) {
+            LOG_WARN("Discovery packet from ", sender_ip,
+                     " may be truncated (", len, " >= buffer size ", buffer.size(), ") – dropping");
+            continue;
+        }
+
         auto device = parse_packet(buffer.data(), len, sender_ip);
         if (device && m_callback) {
             // Filter self-discovery

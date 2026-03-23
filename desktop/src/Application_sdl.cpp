@@ -7,7 +7,11 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
+#ifdef __APPLE__
+#include <OpenGL/gl3.h>
+#else
 #include <GL/gl.h>
+#endif
 #include <cstdio>
 #include <teleport/teleport.h>
 
@@ -70,12 +74,13 @@ bool Application::Initialize() {
 
   // Initialize Teleport bridge
   bridge_ = std::make_unique<TeleportBridge>();
+  bridge_->SetDownloadPath(config_->GetDownloadPath());
+  bridge_->SetSignalingServerUrl(config_->GetSignalingServerUrl());
   if (!bridge_->Initialize()) {
     fprintf(stderr, "Warning: TeleportBridge initialization failed. Some "
                     "features may not work.\n");
     // Continue anyway - core UI will still function
   }
-  bridge_->SetDownloadPath(config_->GetDownloadPath());
 
   // Initialize all 5 views
   discoverView_ = std::make_unique<DiscoverView>(bridge_.get(), theme_.get());
@@ -145,6 +150,10 @@ int Application::Run() {
     while (SDL_PollEvent(&event)) {
       ImGui_ImplSDL2_ProcessEvent(&event);
       HandleEvent(event);
+    }
+
+    if (bridge_) {
+      bridge_->Update();
     }
 
     // Update all views

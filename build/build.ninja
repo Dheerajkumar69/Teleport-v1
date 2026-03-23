@@ -389,6 +389,40 @@ build core/libteleport_core.a: CXX_STATIC_LIBRARY_LINKER__teleport_core_Release 
   TARGET_FILE = core/libteleport_core.a
   TARGET_PDB = teleport_core.a.dbg
 
+# =============================================================================
+# Object build statements for EXECUTABLE target teleport_transfer_selftest
+
+
+#############################################
+# Order-only phony target for teleport_transfer_selftest
+
+build cmake_object_order_depends_target_teleport_transfer_selftest: phony || cmake_object_order_depends_target_teleport_core
+
+build core/CMakeFiles/teleport_transfer_selftest.dir/tests/test_transfer_bulletproof.cpp.o: CXX_COMPILER__teleport_transfer_selftest_unscanned_Release /home/dheeraj/Code/actual$ project$ /teleport/Teleport-v1/core/tests/test_transfer_bulletproof.cpp || cmake_object_order_depends_target_teleport_transfer_selftest
+  DEFINES = -DTELEPORT_LINUX -DTELEPORT_STATIC
+  DEP_FILE = core/CMakeFiles/teleport_transfer_selftest.dir/tests/test_transfer_bulletproof.cpp.o.d
+  FLAGS = -O3 -DNDEBUG -std=c++17
+  INCLUDES = -I"/home/dheeraj/Code/actual project /teleport/Teleport-v1/core/include" -I"/home/dheeraj/Code/actual project /teleport/Teleport-v1/build/_deps/json-src/include"
+  OBJECT_DIR = core/CMakeFiles/teleport_transfer_selftest.dir
+  OBJECT_FILE_DIR = core/CMakeFiles/teleport_transfer_selftest.dir/tests
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target teleport_transfer_selftest
+
+
+#############################################
+# Link the executable core/teleport_transfer_selftest
+
+build core/teleport_transfer_selftest: CXX_EXECUTABLE_LINKER__teleport_transfer_selftest_Release core/CMakeFiles/teleport_transfer_selftest.dir/tests/test_transfer_bulletproof.cpp.o | core/libteleport_core.a || core/libteleport_core.a
+  FLAGS = -O3 -DNDEBUG
+  LINK_LIBRARIES = core/libteleport_core.a
+  OBJECT_DIR = core/CMakeFiles/teleport_transfer_selftest.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = core/teleport_transfer_selftest
+  TARGET_PDB = teleport_transfer_selftest.dbg
+
 
 #############################################
 # Utility command for test
@@ -937,6 +971,8 @@ build teleport_cli: phony cli/teleport
 
 build teleport_core: phony core/libteleport_core.a
 
+build teleport_transfer_selftest: phony core/teleport_transfer_selftest
+
 # =============================================================================
 # Folder targets.
 
@@ -966,7 +1002,7 @@ build cli/all: phony cli/teleport
 #############################################
 # Folder: /home/dheeraj/Code/actual project /teleport/Teleport-v1/build/core
 
-build core/all: phony core/libteleport_core.a
+build core/all: phony core/libteleport_core.a core/teleport_transfer_selftest
 
 # =============================================================================
 

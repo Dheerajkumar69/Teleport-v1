@@ -11,6 +11,8 @@
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <windows.h>
+#elif defined(__APPLE__)
+#include "platform/FileDialog_macos.h"
 #else
 #include "platform/FileDialog_linux.h"
 #endif

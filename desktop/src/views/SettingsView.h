@@ -26,6 +26,7 @@ private:
   void RenderTransferSettings();
   void RenderAppearanceSettings();
   void RenderAbout();
+  void RenderOnlineSettings();
 
   void SaveSettings();
   void LoadSettings();
@@ -40,9 +41,10 @@ private:
   bool darkMode_ = true;
   bool autoStart_ = false;
   bool showNotifications_ = true;
+  char signalingUrl_[512] = "";
 
   // Animation
-  float toggleAnim_[4] = {1.0f, 0.0f, 1.0f, 0.0f}; // For toggle switches
+  float toggleAnim_[5] = {1.0f, 0.0f, 1.0f, 0.0f, 0.0f}; // For toggle switches
 };
 
 } // namespace teleport::ui

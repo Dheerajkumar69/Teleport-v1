@@ -3,24 +3,37 @@
  * Caches app shell for offline functionality
  */
 
-const CACHE_NAME = 'teleport-v4'; // Bumped: TURN fix, sanitizer, resume, peer-joined tracking
+const CACHE_NAME = 'teleport-v5';
+const APP_SCOPE = self.registration.scope;
+const ROOT_URL = new URL('./', APP_SCOPE).toString();
+const OFFLINE_URL = new URL('index.html', APP_SCOPE).toString();
 const STATIC_ASSETS = [
-    '/app.html',
-    '/teleport-webrtc.js',
-    '/app-lovable.js',
-    '/streamsaver.min.js',
-    '/assets/favicon.svg'
+    ROOT_URL,
+    OFFLINE_URL,
+    new URL('teleport-webrtc.js', APP_SCOPE).toString(),
+    new URL('app-lovable.js', APP_SCOPE).toString(),
+    new URL('streamsaver.min.js', APP_SCOPE).toString(),
+    new URL('assets/favicon.svg', APP_SCOPE).toString()
 ];
+
+async function cacheAppShell() {
+    const cache = await caches.open(CACHE_NAME);
+    const results = await Promise.allSettled(
+        STATIC_ASSETS.map((assetUrl) => {
+            return cache.add(new Request(assetUrl, { cache: 'reload' }));
+        })
+    );
+
+    const failedCount = results.filter(r => r.status === 'rejected').length;
+    if (failedCount > 0) {
+        console.warn(`[Teleport SW] ${failedCount} app-shell asset(s) failed to cache`);
+    }
+}
 
 // Install - cache static assets
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then((cache) => {
-                console.log('🚀 Teleport SW: Caching app shell');
-                return cache.addAll(STATIC_ASSETS);
-            })
-            .then(() => self.skipWaiting())
+        cacheAppShell().then(() => self.skipWaiting())
     );
 });
 
@@ -58,7 +71,7 @@ self.addEventListener('fetch', (event) => {
                         .then((response) => {
                             if (response && response.status === 200) {
                                 caches.open(CACHE_NAME)
-                                    .then((cache) => cache.put(event.request, response));
+                                    .then((cache) => cache.put(event.request, response.clone()));
                             }
                         })
                         .catch(() => { });
@@ -80,11 +93,13 @@ self.addEventListener('fetch', (event) => {
                         return response;
                     });
             })
-            .catch(() => {
+            .catch(async () => {
                 // Return offline page for navigation requests
                 if (event.request.mode === 'navigate') {
-                    return caches.match('/app.html');
+                    return (await caches.match(OFFLINE_URL)) || (await caches.match(ROOT_URL));
                 }
+
+                return Response.error();
             })
     );
 });

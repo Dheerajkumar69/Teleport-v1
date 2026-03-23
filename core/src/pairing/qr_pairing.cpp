@@ -253,33 +253,66 @@ Result<QrBitmap> generate_qr_code(
     }
 }
 
-// Simple PNG encoder for QR codes (minimal implementation)
+// IEEE CRC32 helper (used only for PNG chunk writing)
 namespace {
 
+// Build CRC32 lookup table at static initialisation time.
+const uint32_t* crc32_table() {
+    static uint32_t table[256];
+    static bool initialised = false;
+    if (!initialised) {
+        for (uint32_t n = 0; n < 256; ++n) {
+            uint32_t c = n;
+            for (int k = 0; k < 8; ++k) {
+                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            }
+            table[n] = c;
+        }
+        initialised = true;
+    }
+    return table;
+}
+
+uint32_t ieee_crc32(const uint8_t* data, size_t len, uint32_t crc = 0xFFFFFFFFu) {
+    const uint32_t* tbl = crc32_table();
+    for (size_t i = 0; i < len; ++i) {
+        crc = tbl[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// Write a correctly CRC'd PNG chunk.
 void write_png_chunk(std::vector<uint8_t>& out, const char* type, const std::vector<uint8_t>& data) {
     // Length (big-endian)
     uint32_t len = static_cast<uint32_t>(data.size());
     out.push_back((len >> 24) & 0xFF);
     out.push_back((len >> 16) & 0xFF);
-    out.push_back((len >> 8) & 0xFF);
-    out.push_back(len & 0xFF);
-    
+    out.push_back((len >> 8)  & 0xFF);
+    out.push_back( len        & 0xFF);
+
     // Type
     for (int i = 0; i < 4; ++i) {
-        out.push_back(type[i]);
+        out.push_back(static_cast<uint8_t>(type[i]));
     }
-    
+
     // Data
     out.insert(out.end(), data.begin(), data.end());
-    
-    // CRC32 (simplified - should use proper CRC)
-    uint32_t crc = 0;
-    for (int i = 0; i < 4; ++i) crc = crc * 31 + type[i];
-    for (auto b : data) crc = crc * 31 + b;
+
+    // CRC over type + data
+    uint32_t crc = ieee_crc32(reinterpret_cast<const uint8_t*>(type), 4);
+    if (!data.empty()) {
+        // Continue CRC over the data bytes, feeding the running value.
+        const uint32_t* tbl = crc32_table();
+        uint32_t running = crc ^ 0xFFFFFFFFu; // undo finalisation
+        for (auto b : data) {
+            running = tbl[(running ^ b) & 0xFF] ^ (running >> 8);
+        }
+        crc = running ^ 0xFFFFFFFFu;
+    }
     out.push_back((crc >> 24) & 0xFF);
     out.push_back((crc >> 16) & 0xFF);
-    out.push_back((crc >> 8) & 0xFF);
-    out.push_back(crc & 0xFF);
+    out.push_back((crc >> 8)  & 0xFF);
+    out.push_back( crc        & 0xFF);
 }
 
 } // anonymous namespace
@@ -292,9 +325,11 @@ Result<std::vector<uint8_t>> generate_qr_png(
     if (!qr_result) {
         return qr_result.error();
     }
-    
+
     auto rgba = qr_result->to_rgba(module_size, 4);
-    int image_size = (qr_result->size + 8) * module_size;
+    // BUG FIX (Bug 2): derive image_size from the actual RGBA buffer so it
+    // always matches what to_rgba() allocated, regardless of quiet_zone.
+    int image_size = static_cast<int>(std::sqrt(static_cast<double>(rgba.size()) / 4.0));
     
     // For now, return raw RGBA data with a simple header
     // A full PNG encoder would be more complex
