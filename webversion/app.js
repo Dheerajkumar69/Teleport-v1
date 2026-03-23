@@ -219,8 +219,8 @@
             return;
         }
 
-        transfersList.innerHTML = transfers.map(t => `
-            <div class="transfer-card">
+        transfersList.innerHTML = transfers.map((t, idx) => `
+            <div class="transfer-card" data-transfer-idx="${idx}">
                 <div class="transfer-header">
                     <span class="transfer-title">${escapeHtml(t.filename)}</span>
                     <span class="transfer-status ${t.status}">${t.status}</span>
@@ -229,12 +229,35 @@
                     <div class="progress-fill" style="width: ${t.progress * 100}%"></div>
                 </div>
                 <div class="transfer-meta">
-                    <span>${formatSize(t.transferred || 0)} / ${formatSize(t.total)}</span>
-                    <span>${Math.round(t.progress * 100)}%</span>
+                    <span class="transfer-bytes">${formatSize(t.transferred || 0)} / ${formatSize(t.total)}</span>
+                    <span class="transfer-pct">${Math.round(t.progress * 100)}%</span>
                 </div>
             </div>
         `).join('');
     }
+
+    // Update an existing card in-place (no DOM rebuild, no animation flicker)
+    function updateTransferCard(idx, t) {
+        const card = transfersList.querySelector(`[data-transfer-idx="${idx}"]`);
+        if (!card) {
+            // Card not yet rendered — do a full render to create it
+            renderTransfers();
+            return;
+        }
+        const fill = card.querySelector('.progress-fill');
+        const pct  = card.querySelector('.transfer-pct');
+        const bytes = card.querySelector('.transfer-bytes');
+        const status = card.querySelector('.transfer-status');
+        if (fill)  fill.style.width = `${t.progress * 100}%`;
+        if (pct)   pct.textContent  = `${Math.round(t.progress * 100)}%`;
+        if (bytes) bytes.textContent = `${formatSize(t.transferred || 0)} / ${formatSize(t.total)}`;
+        if (status && t.status) {
+            status.className = `transfer-status ${t.status}`;
+            status.textContent = t.status;
+        }
+    }
+
+
 
     // Escape HTML for security
     function escapeHtml(str) {
@@ -406,12 +429,12 @@
     };
 
     teleport.onTransferProgress = (progress) => {
-        // Update transfer in list
-        const transfer = transfers.find(t => t.filename === progress.filename);
-        if (transfer) {
-            transfer.transferred = progress.received || progress.sent;
-            transfer.progress = progress.progress;
-            renderTransfers();
+        const idx = transfers.findIndex(t => t.filename === progress.filename);
+        if (idx !== -1) {
+            transfers[idx].transferred = progress.received || progress.sent;
+            transfers[idx].progress = progress.progress;
+            // Update the card in-place — no DOM rebuild, no animation flicker
+            updateTransferCard(idx, transfers[idx]);
         }
     };
 
