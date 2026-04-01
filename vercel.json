@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "website/*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "website/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "website/**/*.css",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*\\.(?:js|css|svg|png|ico|html)$)",
+      "dest": "/website/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/website/app.html"
+    }
+  ],
+  "env": {
+    "VITE_SIGNALING_SERVER": "wss://teleport-signaling.onrender.com"
+  }
+}
