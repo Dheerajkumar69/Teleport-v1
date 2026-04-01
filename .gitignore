@@ -36,3 +36,30 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Dependencies
+node_modules/
+jspm_packages/
+bower_components/
+vendor/
+
+# Yarn
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Python Virtual Environments
+venv/
+.venv/
+env/
+.env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Rust
+target/
