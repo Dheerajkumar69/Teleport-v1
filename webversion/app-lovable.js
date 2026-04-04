@@ -445,6 +445,7 @@
                         <div class="transfer-info">
                             <span class="transfer-title">${escapeHtml(t.filename)}</span>
                             ${fileProgress ? `<span class="transfer-file-count">${fileProgress}</span>` : ''}
+                            <span class="transfer-protocol" style="font-size: 0.8rem; color: var(--primary); font-weight: 500; margin-left: 6px;">[${t.protocol || 'WebRTC'}]</span>
                         </div>
                         <span class="transfer-status ${t.status}">
                             ${statusIcon} ${t.status.charAt(0).toUpperCase() + t.status.slice(1)}
@@ -938,6 +939,7 @@
         transfer.eta = typeof progress.eta === 'number' ? progress.eta : transfer.eta;
         transfer.fileIndex = Number.isFinite(progress.fileIndex) ? progress.fileIndex : transfer.fileIndex;
         transfer.totalFiles = Number.isFinite(progress.totalFiles) ? progress.totalFiles : transfer.totalFiles;
+        transfer.protocol = progress.protocol || transfer.protocol || 'WebRTC';
         if (typeof progress.total === 'number') {
             transfer.total = progress.total;
         }

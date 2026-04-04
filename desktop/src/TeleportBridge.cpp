@@ -695,6 +695,7 @@ bool TeleportBridge::SendFiles(const std::string &deviceId,
   info.deviceName = targetDevice.name;
   info.isSending = true;
   info.state = TELEPORT_STATE_CONNECTING;
+  info.protocol = "TCP (LAN)";
   info.bytesTotal = 0;
   info.bytesTransferred = 0;
   info.filesTotal = (uint32_t)filePaths.size();
@@ -1162,6 +1163,7 @@ int TeleportBridge::OnIncoming(const TeleportDevice *sender,
     info.deviceName = sender->name;
     info.isSending = false;
     info.state = TELEPORT_STATE_HANDSHAKING;
+    info.protocol = "TCP (LAN)";
     info.bytesTotal = totalSize;
     info.bytesTransferred = 0;
     info.filesTotal = (uint32_t)count;
@@ -1252,9 +1254,9 @@ bool TeleportBridge::ConnectToPreferredSignaling() {
   //   2. Render primary (the live production server the web app uses)
   //   3. Render backup
   //   4. Local dev server (localhost:3000)
+  static const char *kLocalDev       = "ws://localhost:3000";
   static const char *kRenderPrimary  = "wss://teleport-signaling.onrender.com";
   static const char *kRenderBackup   = "wss://teleport-signaling-backup.onrender.com";
-  static const char *kLocalDev       = "ws://localhost:3000";
 
   std::vector<std::string> candidates;
 
@@ -1263,16 +1265,16 @@ bool TeleportBridge::ConnectToPreferredSignaling() {
     candidates.push_back(preferredUrl);
   }
 
-  // Always include Render primary & backup unless they are already the preferred URL
+  // Always include Local dev first so standard localhost:3000 signaling bridges both apps immediately during dev
+  if (preferredUrl != kLocalDev) {
+    candidates.push_back(kLocalDev);
+  }
   if (preferredUrl != kRenderPrimary) {
     candidates.push_back(GetSupportedSignalingUrl(kRenderPrimary));
   }
   if (preferredUrl != kRenderBackup) {
     candidates.push_back(GetSupportedSignalingUrl(kRenderBackup));
   }
-
-  // Local dev as last resort
-  candidates.push_back(kLocalDev);
 
   for (const auto &url : candidates) {
     if (url.empty())
@@ -1384,6 +1386,7 @@ bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
           info.id = transferKey;
           info.deviceName = isSending ? "Web Peer" : "Incoming Web Peer";
           info.currentFile = progress.filename;
+          info.protocol = "Web Relay";
           info.bytesTransferred = progress.transferredBytes;
           info.bytesTotal = progress.totalBytes;
           info.filesCompleted = 0;
@@ -1432,6 +1435,7 @@ bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
         info.id = "web_error_" + std::to_string(GetTickCount64());
         info.deviceName = "Web Transfer";
         info.currentFile = message;
+        info.protocol = "Web Relay";
         info.bytesTransferred = 0;
         info.bytesTotal = 0;
         info.filesCompleted = 0;
@@ -1468,6 +1472,7 @@ bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
             info.currentFile = "Integrity check failed";
             info.state = TELEPORT_STATE_FAILED;
             info.isSending = false;
+            info.protocol = "Web Relay";
             transfers_.push_back(std::move(info));
           }
           return;
@@ -1557,6 +1562,7 @@ bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
             info.state = TELEPORT_STATE_COMPLETE;
             info.isSending = false;
             info.progress = 1.0f;
+            info.protocol = "Web Relay";
             transfers_.push_back(std::move(info));
           } else {
             it->currentFile = safeName;
@@ -1582,6 +1588,7 @@ bool TeleportBridge::ConnectToWebSignaling(const std::string &serverUrl) {
           info.state = TELEPORT_STATE_FAILED;
           info.isSending = false;
           info.progress = 0.0f;
+          info.protocol = "Web Relay";
 
           std::lock_guard<std::mutex> lock(transfersMutex_);
           transfers_.push_back(std::move(info));

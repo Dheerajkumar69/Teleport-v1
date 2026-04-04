@@ -125,6 +125,12 @@ void TransfersView::RenderTransferCard(const TransferInfo &transfer,
   ImGui::SameLine();
   ImGui::TextColored(theme_->GetColorVec(ThemeColor::TextPrimary), "%s",
                      transfer.deviceName.c_str());
+                     
+  if (!transfer.protocol.empty()) {
+    ImGui::SameLine(0, 12);
+    ImGui::TextColored(theme_->GetColorVec(ThemeColor::PrimaryLight), "[%s]", 
+                       transfer.protocol.c_str());
+  }
 
   // Current file
   ImGui::SetCursorScreenPos(ImVec2(infoX, pos.y + 38));

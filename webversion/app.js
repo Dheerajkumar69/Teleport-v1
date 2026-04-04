@@ -124,7 +124,7 @@
         }
 
         devicesGrid.innerHTML = peers.map(peer => `
-        <div class="device-card ${selectedPeer === peer.id ? 'selected' : ''}" data-peer-id="${peer.id}">
+        <div class="device-card ${selectedPeer === peer.id ? 'selected' : ''}" data-peer-id="${peer.id}" style="${peer.clientType === 'web' ? 'border-bottom: 2px solid #4ade80;' : ''}">
             <div class="device-icon">
                 ${getDeviceIcon(peer.name)}
             </div>
@@ -133,6 +133,7 @@
                 <span class="device-status"></span>
                 <span>Online • Ready to receive</span>
             </div>
+            ${peer.clientType === 'web' ? '<div style="margin-top: 8px; font-size: 11px; background: rgba(74, 222, 128, 0.1); color: #4ade80; border-radius: 4px; padding: 2px 6px; display: inline-block; font-weight: 500;">🌐 Web Peer (Fast Transfer)</div>' : ''}
         </div>
     `).join('');
 
@@ -151,7 +152,7 @@
         peers.forEach(peer => {
             const option = document.createElement('option');
             option.value = peer.id;
-            option.textContent = peer.name;
+            option.textContent = peer.clientType === 'web' ? `${peer.name} (Web)` : peer.name;
             if (peer.id === selectedPeer) option.selected = true;
             recipientSelect.appendChild(option);
         });

@@ -198,7 +198,8 @@ function getPeerList(room, excludePeerId = null) {
                 name: peer.name,
                 fingerprint: peer.fingerprint || null,
                 publicKey: peer.publicKey || null,
-                isLan: peer.isLan || false
+                isLan: peer.isLan || false,
+                clientType: peer.clientType || 'unknown'
             };
         })
         .filter(Boolean);
@@ -242,7 +243,7 @@ wss.on('connection', (ws, req) => {
         switch (message.type) {
             case 'join': {
                 // Join a room
-                const { room, name, fingerprint, publicKey } = message;
+                const { room, name, fingerprint, publicKey, clientType } = message;
                 const roomName = room || 'teleport-default';
 
                 // Store peer info including crypto identity
@@ -253,7 +254,8 @@ wss.on('connection', (ws, req) => {
                     fingerprint: typeof fingerprint === 'string' ? fingerprint.substring(0, 64) : null,
                     publicKey: typeof publicKey === 'string' ? publicKey.substring(0, 512) : null,
                     ip: clientIp,
-                    isLan: false
+                    isLan: false,
+                    clientType: clientType || 'unknown'
                 });
 
                 // Add to room
@@ -277,9 +279,15 @@ wss.on('connection', (ws, req) => {
                         id: peerId,
                         name: name || 'Unknown Device',
                         fingerprint: typeof fingerprint === 'string' ? fingerprint.substring(0, 64) : null,
-                        publicKey: typeof publicKey === 'string' ? publicKey.substring(0, 512) : null
+                        publicKey: typeof publicKey === 'string' ? publicKey.substring(0, 512) : null,
+                        clientType: clientType || 'unknown'
                     }
                 }, peerId);
+                break;
+            }
+
+            case 'pong': {
+                ws.isAlive = true;
                 break;
             }
 
@@ -515,6 +523,22 @@ wss.on('connection', (ws, req) => {
     ws.on('error', (error) => {
         console.error(`[${peerId}] WebSocket error:`, error.message);
     });
+});
+
+// Periodic sweeping of dead connections
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            console.warn('[Sweep] Terminating dead connection');
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 20000);
+
+wss.on('close', () => {
+    clearInterval(heartbeatInterval);
 });
 
 server.listen(PORT, () => {

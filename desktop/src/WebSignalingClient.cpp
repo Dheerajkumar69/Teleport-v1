@@ -1319,8 +1319,11 @@ void WebSignalingClient::processMessages() {
       m_running = false;
       break;
     } else if (opcode == 0x09) { // Ping
-      uint8_t pongFrame[2] = {0x8A, 0x00};
-      sendWithTimeout(m_socket, pongFrame, 2, 1000);
+      uint8_t mask[4];
+      std::random_device rd;
+      for (int i = 0; i < 4; i++) mask[i] = rd() & 0xFF;
+      uint8_t pongFrame[6] = {0x8A, 0x80, mask[0], mask[1], mask[2], mask[3]};
+      sendWithTimeout(m_socket, pongFrame, 6, 1000);
     } else if (opcode == 0x0A) { // Pong — server reply to our heartbeat ping
       m_lastActivity = std::chrono::steady_clock::now();
     }
@@ -1358,30 +1361,33 @@ void WebSignalingClient::handleMessage(const std::string &message) {
     }
     return; // nothing else to do for welcome
   } else if (type == "peers") {
-    // Parse peers list
     std::vector<WebPeer> peers;
     size_t pos = 0;
-    while ((pos = message.find("\"id\":", pos)) != std::string::npos) {
+    while ((pos = message.find("{\"id\":", pos)) != std::string::npos) {
+      size_t objEnd = message.find('}', pos);
+      if (objEnd == std::string::npos) break;
+      
+      std::string objStr = message.substr(pos, objEnd - pos + 1);
+      
       WebPeer peer;
-      size_t idStart = message.find('"', pos + 5);
-      size_t idEnd = message.find('"', idStart + 1);
-      if (idStart != std::string::npos && idEnd != std::string::npos) {
-        peer.id = message.substr(idStart + 1, idEnd - idStart - 1);
-      }
-      size_t namePos = message.find("\"name\":", pos);
-      if (namePos != std::string::npos && namePos < pos + 200) {
-        size_t nameStart = message.find('"', namePos + 7);
-        size_t nameEnd = message.find('"', nameStart + 1);
-        if (nameStart != std::string::npos && nameEnd != std::string::npos) {
-          peer.name = message.substr(nameStart + 1, nameEnd - nameStart - 1);
-        }
-      }
+      peer.id = JsonGetStringField(objStr, "id");
+      peer.name = JsonGetStringField(objStr, "name");
+      peer.platform = JsonGetStringField(objStr, "clientType");
+      if (peer.platform.empty()) peer.platform = "web";
+      
       peer.isWeb = true;
       peer.lastSeen = std::chrono::steady_clock::now();
+      
       if (!peer.id.empty() && peer.id != m_peerId) {
-        peers.push_back(peer);
+        bool duplicate = false;
+        for (const auto& existing : peers) {
+          if (existing.id == peer.id) duplicate = true;
+        }
+        if (!duplicate) {
+          peers.push_back(peer);
+        }
       }
-      pos = idEnd + 1;
+      pos = objEnd + 1;
     }
     {
       std::lock_guard<std::mutex> lock(m_peersMutex);
@@ -1500,24 +1506,31 @@ void WebSignalingClient::handleMessage(const std::string &message) {
   } else if (type == "offer") {
     const std::string fromId = JsonGetStringField(message, "from");
     const std::string sdp = JsonGetStringField(message, "sdp");
-    OnOfferCallback offerCb;
-    {
-      std::lock_guard<std::mutex> lock(m_callbackMutex);
-      offerCb = m_onOffer;
-    }
-    if (offerCb && !fromId.empty() && !sdp.empty()) {
-      offerCb(fromId, sdp);
+    if (!fromId.empty() && !sdp.empty()) {
+      auto it = m_webrtcClients.find(fromId);
+      if (it == m_webrtcClients.end()) {
+        auto client = std::make_shared<NativeWebRTCClient>();
+        client->init(fromId);
+        client->setOnLocalDescription([this, fromId](const std::string& t, const std::string& desc) {
+           if (t == "answer") this->sendAnswer(fromId, desc);
+           else if (t == "offer") this->sendOffer(fromId, desc);
+        });
+        client->setOnLocalCandidate([this, fromId](const std::string& cand, const std::string&) {
+           this->sendIceCandidate(fromId, cand);
+        });
+        m_webrtcClients[fromId] = client;
+        it = m_webrtcClients.find(fromId);
+      }
+      it->second->processOffer(sdp);
     }
   } else if (type == "answer") {
     const std::string fromId = JsonGetStringField(message, "from");
     const std::string sdp = JsonGetStringField(message, "sdp");
-    OnAnswerCallback answerCb;
-    {
-      std::lock_guard<std::mutex> lock(m_callbackMutex);
-      answerCb = m_onAnswer;
-    }
-    if (answerCb && !fromId.empty() && !sdp.empty()) {
-      answerCb(fromId, sdp);
+    if (!fromId.empty() && !sdp.empty()) {
+        auto it = m_webrtcClients.find(fromId);
+        if (it != m_webrtcClients.end()) {
+             it->second->processAnswer(sdp);
+        }
     }
   } else if (type == "ice") {
     const std::string fromId = JsonGetStringField(message, "from");
@@ -1525,13 +1538,11 @@ void WebSignalingClient::handleMessage(const std::string &message) {
     if (candidate.empty()) {
       candidate = JsonGetStringField(message, "sdp");
     }
-    OnIceCandidateCallback iceCb;
-    {
-      std::lock_guard<std::mutex> lock(m_callbackMutex);
-      iceCb = m_onIceCandidate;
-    }
-    if (iceCb && !fromId.empty() && !candidate.empty()) {
-      iceCb(fromId, candidate);
+    if (!fromId.empty() && !candidate.empty()) {
+        auto it = m_webrtcClients.find(fromId);
+        if (it != m_webrtcClients.end()) {
+             it->second->processIceCandidate(candidate, "0");
+        }
     }
   } else if (type == "relay-start") {
     // Start new incoming transfer
@@ -2338,12 +2349,241 @@ bool WebSignalingClient::streamFileViaRelay(const std::string &targetPeerId,
   return ok;
 }
 
+void WebSignalingClient::handleWebRTCControlMessage(const std::string &fromId, const std::string &message) {
+  if (message.empty() || message[0] != '{') return;
+  std::string type = JsonGetStringField(message, "type");
+  if (type == "file-start") {
+    std::string transferId = JsonGetStringField(message, "transferId");
+    if (transferId.empty()) return;
+    {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      m_activeWebRTCTransfers[fromId] = transferId;
+      RelayTransfer transfer;
+      transfer.transferId = transferId;
+      transfer.fromPeerId = fromId;
+      transfer.filename = JsonGetStringField(message, "filename");
+      transfer.totalSize = JsonGetSizeField(message, "size", 0);
+      transfer.fileIndex = static_cast<int>(JsonGetSizeField(message, "fileIndex", 0));
+      transfer.totalFiles = static_cast<int>(JsonGetSizeField(message, "totalFiles", 1));
+      transfer.sha256Expected = JsonGetStringField(message, "sha256");
+      transfer.state = TransferState::InProgress;
+      transfer.lastActivity = std::chrono::steady_clock::now();
+      if (!transfer.sha256Expected.empty() && !isValidSha256Hex(transfer.sha256Expected)) return;
+      if (!m_downloadPath.empty() && transfer.totalSize > SignalingConfig::STREAM_THRESHOLD) {
+        transfer.streaming = true;
+        transfer.tempFilePath = m_downloadPath + "/.__tmp_" + transferId;
+        transfer.tempFileHandle = std::make_shared<std::ofstream>(transfer.tempFilePath, std::ios::binary | std::ios::trunc);
+        if (!transfer.tempFileHandle->is_open()) {
+          transfer.streaming = false;
+          transfer.tempFileHandle.reset();
+          if (transfer.totalSize > 0) transfer.data.reserve(transfer.totalSize);
+        }
+      } else {
+        if (transfer.totalSize > 0) transfer.data.reserve(transfer.totalSize);
+      }
+      m_incomingTransfers[transferId] = transfer;
+    }
+    std::ostringstream responseMsg;
+    responseMsg << "{\"type\":\"resume-ready\",\"transferId\":\"" << JsonEscape(transferId) << "\",\"resumeOffset\":0,\"resumeCapable\":false}";
+    auto it = m_webrtcClients.find(fromId);
+    if (it != m_webrtcClients.end()) it->second->sendString(responseMsg.str());
+  } else if (type == "file-end") {
+    std::string transferId = JsonGetStringField(message, "transferId");
+    if (transferId.empty()) return;
+    RelayTransfer completedTransfer;
+    bool found = false;
+    {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      auto it = m_incomingTransfers.find(transferId);
+      if (it != m_incomingTransfers.end()) {
+        completedTransfer = it->second;
+        found = true;
+        m_incomingTransfers.erase(it);
+        m_activeWebRTCTransfers.erase(fromId);
+      }
+    }
+    if (found) {
+      bool ok = false;
+      if (completedTransfer.streaming && completedTransfer.tempFileHandle) {
+        completedTransfer.tempFileHandle->close();
+        std::string actualHash = computeSHA256(completedTransfer.tempFilePath);
+        ok = completedTransfer.sha256Expected.empty() || actualHash == completedTransfer.sha256Expected;
+        if (!ok && m_onError) m_onError(SignalingError::IntegrityCheckFailed, "WebRTC Checksum mismatch (streaming)");
+        if (ok && m_onTransferComplete) {
+            completedTransfer.finalFilePath = m_downloadPath + "/" + completedTransfer.filename;
+            m_onTransferComplete(transferId, completedTransfer.filename, {}, ok);
+        }
+      } else {
+        std::string actualHash = computeSHA256(completedTransfer.data);
+        ok = completedTransfer.sha256Expected.empty() || actualHash == completedTransfer.sha256Expected;
+        if (!ok && m_onError) m_onError(SignalingError::IntegrityCheckFailed, "WebRTC Checksum mismatch (memory)");
+        if (ok && m_onTransferComplete) m_onTransferComplete(transferId, completedTransfer.filename, completedTransfer.data, ok);
+      }
+    }
+  } else if (type == "resume-ready") {
+    std::string transferId = JsonGetStringField(message, "transferId");
+    {
+      std::lock_guard<std::mutex> lock(m_fileResponseMutex);
+      m_pendingFileResponses[transferId] = true;
+    }
+    m_fileResponseCv.notify_all();
+  }
+}
+
+void WebSignalingClient::handleWebRTCChunk(const std::string &fromId, const uint8_t *data, size_t size) {
+  std::string transferId;
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    auto it = m_activeWebRTCTransfers.find(fromId);
+    if (it != m_activeWebRTCTransfers.end()) transferId = it->second;
+  }
+  if (transferId.empty()) return;
+  bool emitProgress = false;
+  TransferProgress progressSnapshot;
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    auto it = m_incomingTransfers.find(transferId);
+    if (it != m_incomingTransfers.end()) {
+      if (it->second.streaming && it->second.tempFileHandle && it->second.tempFileHandle->is_open()) {
+        it->second.tempFileHandle->write(reinterpret_cast<const char*>(data), size);
+      } else {
+        it->second.data.insert(it->second.data.end(), data, data + size);
+      }
+      it->second.receivedBytes += size;
+      auto now = std::chrono::steady_clock::now();
+      auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second.lastActivity).count();
+      if (elapsedMs > 100 || it->second.receivedBytes >= it->second.totalSize) {
+        it->second.lastActivity = now;
+        
+        progressSnapshot.transferId = it->second.transferId;
+        progressSnapshot.filename = it->second.filename;
+        progressSnapshot.totalBytes = it->second.totalSize;
+        progressSnapshot.transferredBytes = it->second.receivedBytes;
+        progressSnapshot.state = it->second.state;
+        
+        emitProgress = true;
+      }
+    }
+  }
+  if (emitProgress && m_onTransferProgress) {
+    m_onTransferProgress(progressSnapshot);
+  }
+}
+
+bool WebSignalingClient::streamFileViaWebRTC(const std::string &targetPeerId, const std::string &filePath) {
+  std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+  if (!file) return false;
+  std::streampos endPos = file.tellg();
+  if (endPos < 0) return false;
+  size_t fileSize = static_cast<size_t>(endPos);
+  file.seekg(0);
+
+  std::string filename = filePath;
+  size_t lastSlash = filePath.find_last_of("/\\");
+  if (lastSlash != std::string::npos) filename = filePath.substr(lastSlash + 1);
+
+  std::string transferId = generateUUID();
+  std::string sha256 = computeSHA256(filePath);
+
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    TransferProgress progress;
+    progress.transferId = transferId;
+    progress.targetPeerId = targetPeerId;
+    progress.filename = filename;
+    progress.totalBytes = fileSize;
+    progress.transferredBytes = 0;
+    progress.state = TransferState::InProgress;
+    progress.startTime = std::chrono::steady_clock::now();
+    progress.lastChunkTime = progress.startTime;
+    m_outgoingTransfers[transferId] = std::move(progress);
+  }
+
+  std::ostringstream startMsg;
+  startMsg << "{\"type\":\"file-start\",\"transferId\":\"" << JsonEscape(transferId) << "\",\"filename\":\"" << JsonEscape(filename) << "\",\"size\":" << fileSize << ",\"mimeType\":\"application/octet-stream\",\"fileIndex\":0,\"totalFiles\":1,\"sha256\":\"" << JsonEscape(sha256) << "\"}";
+
+  auto it = m_webrtcClients.find(targetPeerId);
+  if (it == m_webrtcClients.end()) return false;
+  it->second->sendString(startMsg.str());
+
+  // Wait for resume-ready
+  bool accepted = false;
+  {
+    std::unique_lock<std::mutex> lock(m_fileResponseMutex);
+    auto status = m_fileResponseCv.wait_for(lock, std::chrono::seconds(15), [&]() {
+      return m_pendingFileResponses.find(transferId) != m_pendingFileResponses.end();
+    });
+    if (status) {
+      accepted = m_pendingFileResponses[transferId];
+      m_pendingFileResponses.erase(transferId);
+    }
+  }
+  if (!accepted) {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    m_outgoingTransfers.erase(transferId);
+    return false;
+  }
+
+  // Stream via DataChannel
+  char buffer[SignalingConfig::CHUNK_SIZE];
+  size_t offset = 0;
+  while (file && offset < fileSize) {
+    file.read(buffer, SignalingConfig::CHUNK_SIZE);
+    std::streamsize readCount = file.gcount();
+    if (readCount <= 0) break;
+    size_t read = static_cast<size_t>(readCount);
+
+    if (!it->second->sendData(reinterpret_cast<const uint8_t*>(buffer), read)) {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      m_outgoingTransfers.erase(transferId);
+      return false;
+    }
+    offset += read;
+
+    bool emitProgress = false;
+    TransferProgress progressSnapshot;
+    {
+      std::lock_guard<std::mutex> lock(m_transfersMutex);
+      auto tIt = m_outgoingTransfers.find(transferId);
+      if (tIt != m_outgoingTransfers.end()) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - tIt->second.startTime).count();
+        tIt->second.transferredBytes = offset;
+        tIt->second.lastChunkTime = now;
+        if (elapsedMs > 0) tIt->second.speedBytesPerSecond = (offset * 1000.0f) / elapsedMs;
+        progressSnapshot = tIt->second;
+        emitProgress = true;
+      }
+    }
+    if (emitProgress && m_onTransferProgress) {
+        m_onTransferProgress(progressSnapshot);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2)); // Flow control
+  }
+
+  std::ostringstream endMsg;
+  endMsg << "{\"type\":\"file-end\",\"transferId\":\"" << JsonEscape(transferId) << "\"}";
+  it->second->sendString(endMsg.str());
+
+  {
+    std::lock_guard<std::mutex> lock(m_transfersMutex);
+    auto tIt = m_outgoingTransfers.find(transferId);
+    if (tIt != m_outgoingTransfers.end()) {
+      tIt->second.state = TransferState::Completed;
+    }
+    m_outgoingTransfers.erase(transferId);
+  }
+  return true;
+}
+
 bool WebSignalingClient::streamFileOnline(const std::string &targetPeerId,
                                           const std::string &filePath) {
-  // This desktop build has no native WebRTC backend wired in.
-  // Always fall through to the server relay path — do NOT emit an error here,
-  // because that error propagates to TeleportBridge::onError which creates a
-  // spurious "? Failed / DNS resolution failed" entry in the Transfers view.
+  // If we have an active WebRTC client, use it automatically!
+  auto it = m_webrtcClients.find(targetPeerId);
+  if (it != m_webrtcClients.end()) {
+    return streamFileViaWebRTC(targetPeerId, filePath);
+  }
+  // Otherwise fall through to the server relay path
   return streamFileViaRelay(targetPeerId, filePath);
 }
 

@@ -66,6 +66,7 @@ if(WIN32)
         src/Application.cpp
         src/platform/Sound_win32.cpp
         src/WebSignalingClient.cpp
+        src/NativeWebRTCClient.cpp
     )
 
     set(DESKTOP_WIN_HEADERS
@@ -98,6 +99,7 @@ if(WIN32)
         uxtheme
         Comctl32
         Shlwapi
+        datachannel
     )
 
     if(OpenSSL_FOUND)
@@ -155,6 +157,7 @@ elseif(UNIX AND NOT APPLE)
         src/platform/FileDialog_linux.cpp
         src/platform/Sound_linux.cpp
         src/WebSignalingClient.cpp
+        src/NativeWebRTCClient.cpp
     )
 
     set(DESKTOP_LINUX_HEADERS
@@ -187,6 +190,7 @@ elseif(UNIX AND NOT APPLE)
         OpenSSL::SSL
         OpenSSL::Crypto
         ${CMAKE_DL_LIBS}
+        datachannel
     )
 
     target_compile_definitions(TeleportUI PRIVATE
@@ -228,6 +232,7 @@ elseif(APPLE)
         src/platform/FileDialog_macos.cpp
         src/platform/Sound_macos.cpp
         src/WebSignalingClient.cpp
+        src/NativeWebRTCClient.cpp
     )
 
     set(DESKTOP_MACOS_HEADERS
@@ -263,6 +268,7 @@ elseif(APPLE)
         "-framework IOKit"
         "-framework CoreVideo"
         ${CMAKE_DL_LIBS}
+        datachannel
     )
 
     target_compile_definitions(TeleportUI PRIVATE

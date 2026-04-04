@@ -31,13 +31,36 @@ endif()
 
 message(STATUS "Building Teleport for platform: ${TELEPORT_PLATFORM}")
 
-# Fetch nlohmann/json if not found
+# Build options
+option(TELEPORT_BUILD_DESKTOP "Build desktop UI application" ON)
+
 include(FetchContent)
-FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
+
+# Fetch libdatachannel for Desktop (provides nlohmann_json internally)
+if(TELEPORT_BUILD_DESKTOP)
+    set(NO_WEBSOCKET ON CACHE INTERNAL "Disable websocket in libdatachannel")
+    set(NO_MEDIA ON CACHE INTERNAL "Disable media in libdatachannel")
+    set(USE_GNUTLS OFF CACHE INTERNAL "Disable GNUTLS")
+    set(USE_NICE OFF CACHE INTERNAL "Disable libnice")
+    set(SCTP_DEBUG OFF CACHE INTERNAL "Disable SCTP debug")
+    set(USE_MBEDTLS OFF CACHE INTERNAL "Use OpenSSL instead")
+
+    FetchContent_Declare(
+        libdatachannel
+        GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+        GIT_TAG        v0.21.2
+    )
+    FetchContent_MakeAvailable(libdatachannel)
+endif()
+
+# Fetch nlohmann/json if libdatachannel hasn't provided it
+if(NOT TARGET nlohmann_json)
+    FetchContent_Declare(
+        json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    )
+    FetchContent_MakeAvailable(json)
+endif()
 
 # Alias for compatibility
 if(NOT TARGET nlohmann_json::nlohmann_json)
@@ -49,9 +72,6 @@ find_package(GTest CONFIG QUIET)
 
 # Enable testing
 enable_testing()
-
-# Build options
-option(TELEPORT_BUILD_DESKTOP "Build desktop UI application" ON)
 
 # Subdirectories
 add_subdirectory(core)

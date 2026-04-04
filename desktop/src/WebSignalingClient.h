@@ -28,6 +28,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "NativeWebRTCClient.h"
 
 namespace teleport {
 
@@ -241,6 +242,9 @@ public:
   bool streamFileViaRelay(const std::string &targetPeerId,
                           const std::string &filePath);
 
+  bool streamFileViaWebRTC(const std::string &targetPeerId,
+                           const std::string &filePath);
+
   // Auto transport path used by desktop online mode.
   bool streamFileOnline(const std::string &targetPeerId,
                         const std::string &filePath);
@@ -298,6 +302,11 @@ private:
   void handleMessage(const std::string &message);
   bool sendMessage(const std::string &message);
   bool sendMessageWithRetry(const std::string &message, int maxRetries = 3);
+  
+  // DataChannel Handlers
+  void handleWebRTCControlMessage(const std::string &fromId, const std::string &message);
+  void handleWebRTCChunk(const std::string &fromId, const uint8_t *data, size_t size);
+  
   RelayVerificationResult waitForRelayVerification(const std::string &transferId,
                                                    int timeoutMs);
   bool waitForFileResponse(const std::string &targetPeerId, int timeoutMs,
@@ -358,6 +367,8 @@ private:
   std::map<std::string, TransferProgress> m_outgoingTransfers;
   std::map<std::string, RelayVerificationResult> m_relayVerifications;
   std::map<std::string, bool> m_pendingFileResponses;
+  std::map<std::string, std::shared_ptr<NativeWebRTCClient>> m_webrtcClients;
+  std::map<std::string, std::string> m_activeWebRTCTransfers; // fromId -> transferId
 
   // ============ Buffers ============
   std::vector<uint8_t> m_receiveBuffer;

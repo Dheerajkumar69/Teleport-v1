@@ -53,6 +53,7 @@ struct TransferInfo {
   TeleportTransferState state;
   bool isSending;
   float progress = 0.0f; // Animated progress 0-1
+  std::string protocol;  // e.g. "TCP (LAN)", "WebRTC", or "Relay"
 };
 
 /**
