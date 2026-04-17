@@ -564,6 +564,23 @@ std::unique_ptr<TcpSocket> create_tcp_socket(const SocketOptions& opts) {
         return nullptr;
     }
     
+    // TCP_NODELAY — disable Nagle algorithm for bulk parallel transfer
+    if (opts.nodelay) {
+        int flag = 1;
+        setsockopt(static_cast<SOCKET>(sock->handle()),
+                   IPPROTO_TCP, TCP_NODELAY,
+                   reinterpret_cast<const char*>(&flag), sizeof(flag));
+    }
+    if (opts.recv_buffer_size > 0) {
+        setsockopt(static_cast<SOCKET>(sock->handle()), SOL_SOCKET, SO_RCVBUF,
+                   reinterpret_cast<const char*>(&opts.recv_buffer_size),
+                   sizeof(opts.recv_buffer_size));
+    }
+    if (opts.send_buffer_size > 0) {
+        setsockopt(static_cast<SOCKET>(sock->handle()), SOL_SOCKET, SO_SNDBUF,
+                   reinterpret_cast<const char*>(&opts.send_buffer_size),
+                   sizeof(opts.send_buffer_size));
+    }
     if (opts.non_blocking) {
         sock->set_non_blocking(true);
     }
@@ -681,6 +698,37 @@ public:
         }
         return ok();
     }
+
+    Result<void> truncate(uint64_t size) override {
+        // Flush the C++ stream so the kernel sees a consistent view.
+        m_stream.flush();
+        // Use Win32 API to extend / shrink the file to exactly `size` bytes.
+        HANDLE hFile = CreateFileA(
+            m_path.c_str(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr
+        );
+        if (hFile == INVALID_HANDLE_VALUE) {
+            return make_error(TELEPORT_ERROR_FILE_WRITE,
+                              "truncate: CreateFile failed: " + std::to_string(GetLastError()));
+        }
+        LARGE_INTEGER li;
+        li.QuadPart = static_cast<LONGLONG>(size);
+        BOOL ok = SetFilePointerEx(hFile, li, nullptr, FILE_BEGIN);
+        if (ok) ok = SetEndOfFile(hFile);
+        DWORD last_err = GetLastError();
+        CloseHandle(hFile);
+        if (!ok) {
+            return make_error(TELEPORT_ERROR_FILE_WRITE,
+                              "truncate: SetEndOfFile failed: " + std::to_string(last_err));
+        }
+        m_size = size;
+        return ok();
+    }
     
 private:
     std::fstream m_stream;
@@ -741,6 +789,24 @@ int64_t timestamp_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
     ).count();
+}
+
+bool set_socket_buffer_size(SocketHandle handle, int recv_bytes, int send_bytes) {
+    bool ok_flag = true;
+    SOCKET s = static_cast<SOCKET>(handle);
+    if (recv_bytes > 0) {
+        if (setsockopt(s, SOL_SOCKET, SO_RCVBUF,
+                       reinterpret_cast<const char*>(&recv_bytes), sizeof(recv_bytes)) != 0) {
+            ok_flag = false;
+        }
+    }
+    if (send_bytes > 0) {
+        if (setsockopt(s, SOL_SOCKET, SO_SNDBUF,
+                       reinterpret_cast<const char*>(&send_bytes), sizeof(send_bytes)) != 0) {
+            ok_flag = false;
+        }
+    }
+    return ok_flag;
 }
 
 } // namespace pal

@@ -4,6 +4,7 @@
  */
 
 #include "control_client.hpp"
+#include "transfer/parallel_transfer.hpp"
 #include "utils/logger.hpp"
 #include "utils/sanitize.hpp"
 
@@ -109,9 +110,9 @@ Result<void> ControlClient::send_files(
             goto cleanup;
         }
         
-        // Transfer files
+        // Transfer files via ParallelTransfer
         m_state.store(TransferState::Transferring);
-        auto transfer_result = transfer_files(m_files);
+        auto transfer_result = transfer_files_parallel(target, data_port, m_files);
         if (!transfer_result) {
             final_error = static_cast<TeleportError>(transfer_result.error().code);
             goto cleanup;
@@ -280,8 +281,82 @@ Result<void> ControlClient::wait_for_acceptance(uint16_t& data_port) {
     return ok();
 }
 
+Result<void> ControlClient::transfer_files_parallel(
+    const Device& target,
+    uint16_t data_port,
+    const std::vector<FileInfo>& files
+) {
+    MessageWriter writer(*m_socket);
+
+    // Send START
+    ControlMessage start_msg;
+    start_msg.type = ControlMessageType::Start;
+    start_msg.payload = json::object();
+    auto start_result = writer.write(start_msg);
+    if (!start_result) {
+        return start_result.error();
+    }
+
+    // ---- Set up ParallelTransfer ----
+    ParallelTransfer::Config pt_cfg;
+    pt_cfg.num_streams          = ParallelTransfer::DEFAULT_STREAMS;
+    pt_cfg.chunk_size           = m_config.chunk_size;
+    pt_cfg.connect_timeout_ms   = 10000;
+    pt_cfg.transfer_timeout_ms  = 30000;
+
+    ParallelTransfer pt(pt_cfg);
+
+    // Wire progress into the existing callback
+    pt.set_progress_callback([this](const ParallelTransfer::Stats& s) {
+        TransferStats ts;
+        ts.bytes_total       = s.bytes_total;
+        ts.bytes_transferred = s.bytes_sent;
+        ts.speed_bps         = s.speed_bps;
+        ts.eta_seconds       = s.eta_seconds;
+        ts.start_time        = s.start_time;
+        ts.files_total       = m_stats.files_total;
+        ts.files_completed   = m_stats.files_completed;
+        if (m_on_progress) {
+            m_on_progress(ts);
+        }
+    });
+
+    pt.set_error_callback([this](TeleportError code, const std::string& msg) {
+        LOG_ERROR("Parallel transfer error ", code, ": ", msg);
+    });
+
+    // Connect N streams to the data port the server opened for us
+    auto connect_result = pt.connect(target.address.ip, data_port);
+    if (!connect_result) {
+        LOG_ERROR("ParallelTransfer::connect failed: ", connect_result.error().message);
+        return connect_result.error();
+    }
+
+    // Send each file
+    for (const auto& file : files) {
+        if (m_cancel_requested) {
+            return make_error(TELEPORT_ERROR_CANCELLED, "Transfer cancelled");
+        }
+
+        LOG_INFO("Parallel sending: ", file.name, " (", file.size, " bytes)");
+
+        auto send_result = pt.send_file(file.path, file.id, {});
+        if (!send_result) {
+            return send_result.error();
+        }
+
+        m_stats.files_completed++;
+        LOG_INFO("Parallel sent: ", file.name);
+    }
+
+    pt.close();
+    return ok();
+}
+
+// Legacy single-stream path kept for reference / possible fallback.
 Result<void> ControlClient::transfer_files(const std::vector<FileInfo>& files) {
     MessageWriter writer(*m_socket);
+
     
     // Send START
     ControlMessage start_msg;

@@ -72,11 +72,22 @@ function isValidSha256Hex(str) {
 // TURN CREDENTIAL CACHE
 // To rotate TURN credentials: set TURN_USERNAME and TURN_CREDENTIAL env vars.
 // Falls back to the public openrelay project which never expires.
+// Cache is invalidated after TTL_MS (24 h) so env-var rotation is picked up
+// without requiring a server restart.
 // ============================================================================
+const TURN_TTL_MS = 86400 * 1000; // 24 hours — matches the ttl:86400 we advertise
 let cachedTurnCredentials = null;
+let cachedTurnCredentialsAt = 0;
 
 function getTurnCredentials() {
-    if (cachedTurnCredentials) return cachedTurnCredentials;
+    const now = Date.now();
+    // Expire the cache when env-var TURN credentials may have been rotated.
+    // Pure openrelay credentials never expire, but we still respect the TTL for
+    // consistency and to ensure any metered.ca rotation is picked up.
+    if (cachedTurnCredentials && (now - cachedTurnCredentialsAt) < TURN_TTL_MS) {
+        return cachedTurnCredentials;
+    }
+
     cachedTurnCredentials = {
         // Public open-relay (never expires, free tier, ~1 Mbps limit)
         iceServers: [
@@ -107,8 +118,10 @@ function getTurnCredentials() {
         ],
         ttl: 86400
     };
+    cachedTurnCredentialsAt = now;
     return cachedTurnCredentials;
 }
+
 
 // Create HTTP server with CORS and health check
 const server = http.createServer((req, res) => {

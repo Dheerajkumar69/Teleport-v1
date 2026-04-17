@@ -67,9 +67,12 @@ private:
     void accept_loop();
     void handle_connection(std::unique_ptr<pal::TcpSocket> client);
     Result<void> perform_handshake(pal::TcpSocket& socket, Device& sender);
+    Result<void> receive_files_parallel(pal::TcpSocket& control_sock,
+                                         pal::TcpSocket& data_listen,
+                                         const std::vector<FileInfo>& files);
     Result<void> receive_files(pal::TcpSocket& socket, 
                                 const std::vector<FileInfo>& files,
-                                uint16_t data_port);
+                                uint16_t data_port);  // Legacy single-stream
     
     Config m_config;
     std::unique_ptr<pal::TcpSocket> m_server_socket;

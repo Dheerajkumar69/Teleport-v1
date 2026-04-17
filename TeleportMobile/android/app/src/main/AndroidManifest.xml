@@ -1,21 +1,56 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network permissions -->
+    <!-- ================================================================== -->
+    <!-- Network & Internet -->
+    <!-- ================================================================== -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-    
-    <!-- WiFi Direct / P2P permissions -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- ================================================================== -->
+    <!-- WiFi Direct / P2P — required for peer-to-peer transfers -->
+    <!-- ================================================================== -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" 
+    <!-- Android 13+ replaces location requirement for WiFi Direct -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
-    
-    <!-- Optional: Camera for QR scanning -->
+
+    <!-- WiFi Direct hardware feature (optional — allows install on non-P2P devices) -->
+    <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
+
+    <!-- ================================================================== -->
+    <!-- Camera — for QR code scanning -->
+    <!-- ================================================================== -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- ================================================================== -->
+    <!-- WebRTC — required by react-native-webrtc native module -->
+    <!-- ================================================================== -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- ================================================================== -->
+    <!-- File Storage — for sending and receiving files -->
+    <!-- Read/write external storage for Android ≤ 9 -->
+    <!-- ================================================================== -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Android 13+ granular media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- Foreground service for background transfers -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
       android:name=".MainApplication"
@@ -24,7 +59,9 @@
       android:roundIcon="@mipmap/ic_launcher_round"
       android:allowBackup="false"
       android:theme="@style/AppTheme"
-      android:supportsRtl="true">
+      android:supportsRtl="true"
+      android:requestLegacyExternalStorage="true"
+      android:usesCleartextTraffic="true">
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

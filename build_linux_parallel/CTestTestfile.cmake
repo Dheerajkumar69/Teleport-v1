@@ -1,0 +1,9 @@
+# CMake generated Testfile for 
+# Source directory: /home/dheeraj/Code/actualproject/teleport/Teleport-v1/core
+# Build directory: /home/dheeraj/Code/actualproject/teleport/Teleport-v1/build_linux_parallel
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+add_test([=[teleport_transfer_selftest]=] "/home/dheeraj/Code/actualproject/teleport/Teleport-v1/build_linux_parallel/teleport_transfer_selftest")
+set_tests_properties([=[teleport_transfer_selftest]=] PROPERTIES  _BACKTRACE_TRIPLES "/home/dheeraj/Code/actualproject/teleport/Teleport-v1/core/CMakeLists.txt;167;add_test;/home/dheeraj/Code/actualproject/teleport/Teleport-v1/core/CMakeLists.txt;0;")
+subdirs("_deps/json-build")

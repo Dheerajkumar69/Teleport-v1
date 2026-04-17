@@ -7,9 +7,15 @@
  */
 
 #include "parallel_transfer.hpp"
+#include "platform/pal.hpp"
 #include "utils/logger.hpp"
 
 namespace teleport {
+
+// Default constructor — delegates to the Config-taking one with default settings.
+// Cannot be defined inline in the header (nested struct CWG 1296 / GCC 13 restriction).
+ParallelTransfer::ParallelTransfer()
+    : ParallelTransfer(Config{}) {}
 
 ParallelTransfer::ParallelTransfer(const Config& config)
     : m_config(config) {
@@ -35,9 +41,10 @@ Result<void> ParallelTransfer::connect(const std::string& ip, uint16_t port) {
                 "Failed to create stream " + std::to_string(i));
         }
         
-        // Set larger buffer for throughput
-        m_streams[i]->set_send_buffer(4 * 1024 * 1024);  // 4MB
-        m_streams[i]->set_recv_buffer(4 * 1024 * 1024);
+        // 4 MB send + recv kernel buffers for maximum LAN throughput.
+        // pal::set_socket_buffer_size() is a no-op if the OS rejects the size.
+        constexpr int STREAM_BUF = 4 * 1024 * 1024;
+        pal::set_socket_buffer_size(m_streams[i]->handle(), STREAM_BUF, STREAM_BUF);
         
         auto result = m_streams[i]->connect(ip, port, m_config.connect_timeout_ms);
         if (!result) {
@@ -63,8 +70,10 @@ Result<void> ParallelTransfer::accept(pal::TcpSocket& listen_socket) {
         }
         
         m_streams[i] = std::move(*result);
-        m_streams[i]->set_send_buffer(4 * 1024 * 1024);
-        m_streams[i]->set_recv_buffer(4 * 1024 * 1024);
+
+        // 4 MB kernel buffers on accepted streams too.
+        constexpr int STREAM_BUF = 4 * 1024 * 1024;
+        pal::set_socket_buffer_size(m_streams[i]->handle(), STREAM_BUF, STREAM_BUF);
         
         LOG_DEBUG("Stream ", i, " accepted");
     }
@@ -176,15 +185,27 @@ Result<void> ParallelTransfer::receive_file(
     }
     m_trackers[file_id] = std::move(tracker);
     
-    // Open/create output file
-    auto file_result = pal::open_file(output_path, pal::FileMode::Write);
+    // Create the file first (Write mode truncates-to-zero, establishing it on disk).
+    {
+        auto create_result = pal::open_file(output_path, pal::FileMode::Write);
+        if (!create_result) {
+            return create_result.error();
+        }
+        // Pre-allocate to full size while still holding the write handle,
+        // so parallel chunk workers can seek + write at arbitrary offsets.
+        auto trunc_result = (*create_result)->truncate(file_size);
+        if (!trunc_result) {
+            return trunc_result.error();
+        }
+        // create_result destructor closes the Write handle here.
+    }
+
+    // Now reopen in ReadWrite so seeks work on all PAL implementations.
+    auto file_result = pal::open_file(output_path, pal::FileMode::ReadWrite);
     if (!file_result) {
         return file_result.error();
     }
     m_output_file = std::move(*file_result);
-    
-    // Pre-allocate file for random writes
-    m_output_file->truncate(file_size);
     
     // Update stats
     {

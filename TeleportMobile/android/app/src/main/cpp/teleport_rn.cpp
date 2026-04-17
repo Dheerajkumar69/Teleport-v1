@@ -17,14 +17,24 @@
 
 using json = nlohmann::json;
 
-// Global references for callbacks
-static JavaVM* g_jvm = nullptr;
+// Global references for callbacks (file-private)
 static jobject g_module_instance = nullptr;
 static jmethodID g_emit_device_discovered = nullptr;
 static jmethodID g_emit_device_lost = nullptr;
 static jmethodID g_emit_progress = nullptr;
 static jmethodID g_emit_complete = nullptr;
 static std::mutex g_mutex;
+
+// These must be in the teleport namespace so wifi_direct_android.cpp can find them
+// via its `extern teleport::g_jvm` and `extern teleport::g_wifi_direct_manager` declarations.
+namespace teleport {
+    JavaVM* g_jvm = nullptr;
+    jobject g_wifi_direct_manager = nullptr;
+} // namespace teleport
+
+// Local alias for convenience in this file
+static JavaVM*& g_jvm = teleport::g_jvm;
+
 
 // Helper to get JNIEnv in callback threads
 static JNIEnv* getEnv(bool* needsDetach) {

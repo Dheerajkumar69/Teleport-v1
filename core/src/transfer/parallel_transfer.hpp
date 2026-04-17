@@ -4,13 +4,12 @@
  * 
  * This is the PRODUCTION implementation that uses multiple TCP connections
  * to maximize throughput on high-bandwidth networks.
+ * 
+ * Cross-platform: Linux, macOS, Windows (all via pal::TcpSocket abstraction).
  */
 
 #ifndef TELEPORT_PARALLEL_TRANSFER_HPP
 #define TELEPORT_PARALLEL_TRANSFER_HPP
-
-// This file is Windows-only for now due to PAL dependencies
-#ifdef _WIN32
 
 #include <vector>
 #include <atomic>
@@ -23,6 +22,7 @@
 #include <unordered_map>
 #include "platform/pal.hpp"
 #include "teleport/types.h"
+#include "teleport/errors.h"   // TeleportError, make_error(), ok(), TELEPORT_ERROR_*
 
 namespace teleport {
 
@@ -143,7 +143,11 @@ public:
     using ProgressCallback = std::function<void(const Stats&)>;
     using ErrorCallback = std::function<void(TeleportError, const std::string&)>;
     
-    explicit ParallelTransfer(const Config& config = Config{});
+    // Two constructors: default (uses Config{} defaults) and explicit config.
+    // A single constructor with `= Config{}` is ill-formed in C++17 when Config
+    // is a nested struct with in-class member initializers (CWG 1296 / GCC 13).
+    ParallelTransfer();
+    explicit ParallelTransfer(const Config& config);
     ~ParallelTransfer();
     
     /**
@@ -238,7 +242,5 @@ private:
 };
 
 } // namespace teleport
-
-#endif // _WIN32
 
 #endif // TELEPORT_PARALLEL_TRANSFER_HPP

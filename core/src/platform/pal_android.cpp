@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include <fstream>
+#include <sstream>
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -135,6 +136,41 @@ std::string get_broadcast_address() {
     }
     return "255.255.255.255";
 }
+
+std::string get_default_gateway() {
+    // Read /proc/net/route to find the default gateway on Android
+    // Format: Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT
+    std::ifstream route_file("/proc/net/route");
+    if (!route_file.is_open()) {
+        return "";
+    }
+    std::string line;
+    // Skip header line
+    if (!std::getline(route_file, line)) {
+        return "";
+    }
+    while (std::getline(route_file, line)) {
+        std::istringstream iss(line);
+        std::string iface, dest, gateway, flags_str;
+        if (!(iss >> iface >> dest >> gateway)) continue;
+        // Default route has destination 00000000
+        if (dest != "00000000") continue;
+        // Gateway is in hex little-endian
+        try {
+            uint32_t gw_hex = std::stoul(gateway, nullptr, 16);
+            // Convert from little-endian hex to dotted decimal
+            unsigned char* bytes = reinterpret_cast<unsigned char*>(&gw_hex);
+            char gw_str[INET_ADDRSTRLEN];
+            snprintf(gw_str, sizeof(gw_str), "%d.%d.%d.%d",
+                     bytes[0], bytes[1], bytes[2], bytes[3]);
+            return std::string(gw_str);
+        } catch (...) {
+            continue;
+        }
+    }
+    return "";
+}
+
 
 /* ============================================================================
  * Android TCP Socket Implementation

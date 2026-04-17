@@ -15,6 +15,7 @@
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>   // TCP_NODELAY
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -25,6 +26,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <sstream>    // std::istringstream (used in get_default_gateway)
 #include <thread>
 
 namespace teleport {
@@ -552,6 +554,19 @@ std::unique_ptr<TcpSocket> create_tcp_socket(const SocketOptions &opts) {
     return nullptr;
   }
 
+  if (opts.nodelay) {
+    int flag = 1;
+    setsockopt(sock->handle(), IPPROTO_TCP, TCP_NODELAY,
+               &flag, static_cast<socklen_t>(sizeof(flag)));
+  }
+  if (opts.recv_buffer_size > 0) {
+    setsockopt(sock->handle(), SOL_SOCKET, SO_RCVBUF,
+               &opts.recv_buffer_size, static_cast<socklen_t>(sizeof(opts.recv_buffer_size)));
+  }
+  if (opts.send_buffer_size > 0) {
+    setsockopt(sock->handle(), SOL_SOCKET, SO_SNDBUF,
+               &opts.send_buffer_size, static_cast<socklen_t>(sizeof(opts.send_buffer_size)));
+  }
   if (opts.non_blocking) {
     sock->set_non_blocking(true);
   }
@@ -592,7 +607,7 @@ std::unique_ptr<UdpSocket> create_udp_socket(const SocketOptions &opts) {
 class LinuxFile : public File {
 public:
   LinuxFile(const std::string &path, FileMode mode)
-      : m_path(path), m_size(0), m_position(0) {
+      : m_path(path), m_size(0), m_position(0), m_fd(-1) {
 
     std::ios_base::openmode flags = std::ios::binary;
     switch (mode) {
@@ -612,13 +627,25 @@ public:
 
     m_stream.open(path, flags);
     if (m_stream.is_open()) {
+      // Cache underlying fd for truncate()
+      m_fd = ::open(path.c_str(),
+                   (mode == FileMode::Read) ? O_RDONLY
+                   : (mode == FileMode::Append) ? (O_WRONLY | O_APPEND | O_CREAT)
+                   : (O_RDWR | O_CREAT),
+                   0644);
       m_stream.seekg(0, std::ios::end);
       m_size = static_cast<uint64_t>(m_stream.tellg());
       m_stream.seekg(0, std::ios::beg);
     }
   }
 
-  ~LinuxFile() override { close(); }
+  ~LinuxFile() override {
+    close();
+    if (m_fd >= 0) {
+      ::close(m_fd);
+      m_fd = -1;
+    }
+  }
 
   bool is_open() const override { return m_stream.is_open(); }
 
@@ -670,11 +697,37 @@ public:
     return ok();
   }
 
+  Result<void> truncate(uint64_t size) override {
+    // ftruncate() extends or shrinks the file to exactly `size` bytes.
+    // If the file is extended the new bytes are zero-filled (sparse on most FS).
+    // We must flush the stream first so the kernel sees a consistent state.
+    m_stream.flush();
+    int fd = m_fd;
+    if (fd < 0) {
+      // Fallback: reopen via path
+      fd = ::open(m_path.c_str(), O_RDWR | O_CREAT, 0644);
+      if (fd < 0) {
+        return make_error(TELEPORT_ERROR_FILE_WRITE,
+                          "truncate: cannot open fd: " + std::string(strerror(errno)));
+      }
+    }
+    int ret = ::ftruncate(fd, static_cast<off_t>(size));
+    int saved_errno = errno;
+    if (fd != m_fd) ::close(fd);  // Close the fallback fd (not ours)
+    if (ret != 0) {
+      return make_error(TELEPORT_ERROR_FILE_WRITE,
+                        "truncate failed: " + std::string(strerror(saved_errno)));
+    }
+    m_size = size;
+    return ok();
+  }
+
 private:
   std::fstream m_stream;
   std::string m_path;
   uint64_t m_size;
   uint64_t m_position;
+  int m_fd;  // Underlying fd for truncate(); -1 if not available
 };
 
 Result<std::unique_ptr<File>> open_file(const std::string &path,
@@ -727,6 +780,22 @@ int64_t timestamp_ms() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
+}
+
+bool set_socket_buffer_size(SocketHandle handle, int recv_bytes, int send_bytes) {
+  bool ok_flag = true;
+  int fd = static_cast<int>(handle);
+  if (recv_bytes > 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &recv_bytes, sizeof(recv_bytes)) != 0) {
+      ok_flag = false;
+    }
+  }
+  if (send_bytes > 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &send_bytes, sizeof(send_bytes)) != 0) {
+      ok_flag = false;
+    }
+  }
+  return ok_flag;
 }
 
 } // namespace pal

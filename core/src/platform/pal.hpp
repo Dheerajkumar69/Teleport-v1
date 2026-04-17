@@ -108,6 +108,7 @@ struct SocketOptions {
     bool reuse_addr = true;
     bool broadcast = false;       // For UDP
     bool non_blocking = false;
+    bool nodelay = false;         // TCP_NODELAY — disable Nagle (improves latency for bulk transfer)
     int recv_timeout_ms = 0;      // 0 = no timeout
     int send_timeout_ms = 0;
     int recv_buffer_size = 0;     // 0 = default
@@ -244,6 +245,19 @@ public:
     
     // Flush
     virtual Result<void> flush() = 0;
+    
+    /**
+     * @brief Pre-allocate file to given size.
+     *
+     * Used by the parallel receive path to create a sparse file of the
+     * final expected size before workers write chunks at arbitrary offsets.
+     * Implementations should use posix_fallocate / ftruncate on POSIX or
+     * SetEndOfFile on Windows.  A no-op fallback is acceptable but will
+     * cause sequential writes to pad the file on first pass.
+     *
+     * @param size Target file size in bytes.
+     */
+    virtual Result<void> truncate(uint64_t size) = 0;
 };
 
 /**
@@ -260,6 +274,23 @@ bool file_exists(const std::string& path);
  * @brief Get file size
  */
 uint64_t file_size(const std::string& path);
+
+/* ============================================================================
+ * Socket Tuning Helpers
+ * ============================================================================ */
+
+/**
+ * @brief Set kernel send and receive socket buffer sizes.
+ *
+ * Wraps setsockopt(SO_SNDBUF / SO_RCVBUF).  Returns true if both options
+ * were accepted by the kernel.  The kernel may silently double the value
+ * (Linux) or cap it — this is expected behaviour.
+ *
+ * @param handle   Platform socket handle (int fd on POSIX, SOCKET on Windows).
+ * @param recv_bytes  Requested receive buffer size in bytes (0 = no change).
+ * @param send_bytes  Requested send buffer size in bytes (0 = no change).
+ */
+bool set_socket_buffer_size(SocketHandle handle, int recv_bytes, int send_bytes);
 
 /**
  * @brief Get filename from path

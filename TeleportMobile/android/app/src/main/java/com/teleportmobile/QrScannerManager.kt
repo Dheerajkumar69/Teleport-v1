@@ -162,35 +162,13 @@ class QrScannerManager(
 
     @ReactMethod
     fun connectViaQr(qrData: String, promise: Promise) {
-        try {
-            // Validate QR data first
-            val validateResult = nativeValidateQrPairing(qrData)
-            if (validateResult.isEmpty()) {
-                promise.reject("INVALID_QR", "Invalid or expired QR code")
-                return
-            }
-            
-            // Connect via the native module
-            val nativeHandle = TeleportModule.getNativeHandle()
-            if (nativeHandle == 0L) {
-                promise.reject("NOT_INITIALIZED", "Teleport not initialized")
-                return
-            }
-            
-            val result = nativeConnectViaQr(nativeHandle, qrData)
-            if (result) {
-                promise.resolve(validateResult)
-            } else {
-                promise.reject("CONNECT_FAILED", "Failed to connect via QR")
-            }
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
-        }
+        // QR pairing via this path is superseded by WebRTC signaling.
+        // Kept as a no-op stub to avoid breaking the JS API.
+        promise.reject("NOT_SUPPORTED", "QR pairing not available in this build")
     }
 
-    // Native methods - implemented in teleport_rn.cpp
+    // Native QR validation - implemented in teleport_rn.cpp
     private external fun nativeValidateQrPairing(qrData: String): String
-    private external fun nativeConnectViaQr(handle: Long, qrData: String): Boolean
 
     companion object {
         private const val TAG = "QrScannerManager"

@@ -1511,6 +1511,8 @@ void WebSignalingClient::handleMessage(const std::string &message) {
       if (it == m_webrtcClients.end()) {
         auto client = std::make_shared<NativeWebRTCClient>();
         client->init(fromId);
+
+        // Outgoing signaling: send our SDP/ICE back through the server.
         client->setOnLocalDescription([this, fromId](const std::string& t, const std::string& desc) {
            if (t == "answer") this->sendAnswer(fromId, desc);
            else if (t == "offer") this->sendOffer(fromId, desc);
@@ -1518,11 +1520,24 @@ void WebSignalingClient::handleMessage(const std::string &message) {
         client->setOnLocalCandidate([this, fromId](const std::string& cand, const std::string&) {
            this->sendIceCandidate(fromId, cand);
         });
+
+        // ── RECEIVE PATH (Browser → Desktop) ──────────────────────────────
+        // Binary chunks: route to handleWebRTCChunk which writes to the
+        // active RelayTransfer (streaming or in-memory).
+        client->setOnDataChannelMessage([this, fromId](const uint8_t* data, size_t size) {
+          handleWebRTCChunk(fromId, data, size);
+        });
+        // JSON control messages: file-start / file-end / resume-ready
+        client->setOnDataChannelStringMessage([this, fromId](const std::string& msg) {
+          handleWebRTCControlMessage(fromId, msg);
+        });
+
         m_webrtcClients[fromId] = client;
         it = m_webrtcClients.find(fromId);
       }
       it->second->processOffer(sdp);
     }
+
   } else if (type == "answer") {
     const std::string fromId = JsonGetStringField(message, "from");
     const std::string sdp = JsonGetStringField(message, "sdp");
@@ -2355,38 +2370,146 @@ void WebSignalingClient::handleWebRTCControlMessage(const std::string &fromId, c
   if (type == "file-start") {
     std::string transferId = JsonGetStringField(message, "transferId");
     if (transferId.empty()) return;
+
+    // Build a FileInfo vector from the file-start metadata so the UI can show
+    // exactly what the browser is trying to send.
+    FileInfo fi;
+    fi.name     = JsonGetStringField(message, "filename");
+    fi.size     = JsonGetSizeField(message, "size", 0);
+    fi.mimeType = JsonGetStringField(message, "mimeType");
+    fi.sha256   = JsonGetStringField(message, "sha256");
+    if (fi.name.empty()) return; // Malformed — reject silently.
+
+    // Validate SHA-256 if provided.
+    if (!fi.sha256.empty() && !isValidSha256Hex(fi.sha256)) {
+      // SHA-256 field present but invalid — reject and notify sender.
+      auto it = m_webrtcClients.find(fromId);
+      if (it != m_webrtcClients.end()) {
+        it->second->sendString(
+            "{\"type\":\"file-cancel\",\"transferId\":\"" +
+            JsonEscape(transferId) + "\",\"reason\":\"invalid-sha256\"}");
+      }
+      if (m_onError)
+        m_onError(SignalingError::InvalidMessage,
+                  "WebRTC file-start: invalid sha256 digest");
+      return;
+    }
+
+    // ── User Consent Gate ────────────────────────────────────────────────────
+    // Mirror the relay path: call m_onFileRequest so the UI can show an accept/
+    // reject dialog. Then wait (on a worker thread) for the decision.
+    // The DataChannel callback MUST return immediately, so all blocking happens
+    // on the detached thread below.
+    OnFileRequestCallback fileReqCb;
     {
-      std::lock_guard<std::mutex> lock(m_transfersMutex);
-      m_activeWebRTCTransfers[fromId] = transferId;
-      RelayTransfer transfer;
-      transfer.transferId = transferId;
-      transfer.fromPeerId = fromId;
-      transfer.filename = JsonGetStringField(message, "filename");
-      transfer.totalSize = JsonGetSizeField(message, "size", 0);
-      transfer.fileIndex = static_cast<int>(JsonGetSizeField(message, "fileIndex", 0));
-      transfer.totalFiles = static_cast<int>(JsonGetSizeField(message, "totalFiles", 1));
-      transfer.sha256Expected = JsonGetStringField(message, "sha256");
-      transfer.state = TransferState::InProgress;
-      transfer.lastActivity = std::chrono::steady_clock::now();
-      if (!transfer.sha256Expected.empty() && !isValidSha256Hex(transfer.sha256Expected)) return;
-      if (!m_downloadPath.empty() && transfer.totalSize > SignalingConfig::STREAM_THRESHOLD) {
-        transfer.streaming = true;
-        transfer.tempFilePath = m_downloadPath + "/.__tmp_" + transferId;
-        transfer.tempFileHandle = std::make_shared<std::ofstream>(transfer.tempFilePath, std::ios::binary | std::ios::trunc);
-        if (!transfer.tempFileHandle->is_open()) {
-          transfer.streaming = false;
-          transfer.tempFileHandle.reset();
+      std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+      fileReqCb = m_onFileRequest;
+    }
+
+    // Capture everything the worker thread needs by value.
+    std::string capturedFromId   = fromId;
+    std::string capturedTfId     = transferId;
+    std::string capturedFilename = fi.name;
+    size_t      capturedSize     = fi.size;
+    std::string capturedMime     = fi.mimeType;
+    std::string capturedSha256   = fi.sha256;
+    int capturedFileIndex  = static_cast<int>(JsonGetSizeField(message, "fileIndex", 0));
+    int capturedTotalFiles = static_cast<int>(JsonGetSizeField(message, "totalFiles", 1));
+
+    // Notify the UI. m_pendingFileResponses[transferId] will be set to
+    // true (accept) or false (reject) when AcceptPendingRequest / Reject is called.
+    if (fileReqCb) {
+      std::string fromName;
+      {
+        std::lock_guard<std::mutex> pLock(m_peersMutex);
+        for (const auto& p : m_peers) {
+          if (p.id == fromId) { fromName = p.name; break; }
+        }
+        if (fromName.empty()) fromName = fromId;
+      }
+      std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+      fileReqCb(fromId, fromName, {fi});
+    } else {
+      // No UI callback registered — auto-accept (desktop in headless/kiosk mode).
+      std::lock_guard<std::mutex> lock(m_fileResponseMutex);
+      m_pendingFileResponses[capturedTfId] = true;
+      m_fileResponseCv.notify_all();
+    }
+
+    // Worker thread: waits for user decision, then either creates the
+    // RelayTransfer + sends resume-ready, or sends file-cancel.
+    std::thread([this,
+                 capturedFromId, capturedTfId,
+                 capturedFilename, capturedSize, capturedMime, capturedSha256,
+                 capturedFileIndex, capturedTotalFiles]() mutable {
+
+      bool accepted = false;
+      {
+        std::unique_lock<std::mutex> lock(m_fileResponseMutex);
+        // 30-second window for the user to respond.
+        auto didRespond = m_fileResponseCv.wait_for(lock, std::chrono::seconds(30),
+            [&]() {
+              return m_pendingFileResponses.find(capturedTfId) !=
+                     m_pendingFileResponses.end();
+            });
+        if (didRespond) {
+          accepted = m_pendingFileResponses[capturedTfId];
+          m_pendingFileResponses.erase(capturedTfId);
+        }
+      }
+
+      auto clientIt = m_webrtcClients.find(capturedFromId);
+      if (clientIt == m_webrtcClients.end()) return; // Peer already gone.
+
+      if (!accepted) {
+        // User rejected (or timed out) — tell the browser to stop.
+        clientIt->second->sendString(
+            "{\"type\":\"file-cancel\",\"transferId\":\"" +
+            JsonEscape(capturedTfId) + "\",\"reason\":\"rejected\"}");
+        return;
+      }
+
+      // ── Accepted — create the RelayTransfer and reply with resume-ready ──
+      {
+        std::lock_guard<std::mutex> lock(m_transfersMutex);
+        m_activeWebRTCTransfers[capturedFromId] = capturedTfId;
+
+        RelayTransfer transfer;
+        transfer.transferId    = capturedTfId;
+        transfer.fromPeerId    = capturedFromId;
+        transfer.filename      = capturedFilename;
+        transfer.totalSize     = capturedSize;
+        transfer.fileIndex     = capturedFileIndex;
+        transfer.totalFiles    = capturedTotalFiles;
+        transfer.sha256Expected = capturedSha256;
+        transfer.state         = TransferState::InProgress;
+        transfer.lastActivity  = std::chrono::steady_clock::now();
+
+        if (!m_downloadPath.empty() &&
+            transfer.totalSize > SignalingConfig::STREAM_THRESHOLD) {
+          transfer.streaming    = true;
+          transfer.tempFilePath = m_downloadPath + "/.__tmp_" + capturedTfId;
+          transfer.tempFileHandle = std::make_shared<std::ofstream>(
+              transfer.tempFilePath, std::ios::binary | std::ios::trunc);
+          if (!transfer.tempFileHandle->is_open()) {
+            transfer.streaming = false;
+            transfer.tempFileHandle.reset();
+            if (transfer.totalSize > 0)
+              transfer.data.reserve(transfer.totalSize);
+          }
+        } else {
           if (transfer.totalSize > 0) transfer.data.reserve(transfer.totalSize);
         }
-      } else {
-        if (transfer.totalSize > 0) transfer.data.reserve(transfer.totalSize);
+        m_incomingTransfers[capturedTfId] = transfer;
       }
-      m_incomingTransfers[transferId] = transfer;
-    }
-    std::ostringstream responseMsg;
-    responseMsg << "{\"type\":\"resume-ready\",\"transferId\":\"" << JsonEscape(transferId) << "\",\"resumeOffset\":0,\"resumeCapable\":false}";
-    auto it = m_webrtcClients.find(fromId);
-    if (it != m_webrtcClients.end()) it->second->sendString(responseMsg.str());
+
+      std::ostringstream responseMsg;
+      responseMsg << "{\"type\":\"resume-ready\",\"transferId\":\""
+                  << JsonEscape(capturedTfId)
+                  << "\",\"resumeOffset\":0,\"resumeCapable\":false}";
+      clientIt->second->sendString(responseMsg.str());
+    }).detach();
+
   } else if (type == "file-end") {
     std::string transferId = JsonGetStringField(message, "transferId");
     if (transferId.empty()) return;
@@ -2402,22 +2525,139 @@ void WebSignalingClient::handleWebRTCControlMessage(const std::string &fromId, c
         m_activeWebRTCTransfers.erase(fromId);
       }
     }
-    if (found) {
-      bool ok = false;
-      if (completedTransfer.streaming && completedTransfer.tempFileHandle) {
-        completedTransfer.tempFileHandle->close();
-        std::string actualHash = computeSHA256(completedTransfer.tempFilePath);
-        ok = completedTransfer.sha256Expected.empty() || actualHash == completedTransfer.sha256Expected;
-        if (!ok && m_onError) m_onError(SignalingError::IntegrityCheckFailed, "WebRTC Checksum mismatch (streaming)");
-        if (ok && m_onTransferComplete) {
-            completedTransfer.finalFilePath = m_downloadPath + "/" + completedTransfer.filename;
-            m_onTransferComplete(transferId, completedTransfer.filename, {}, ok);
+    if (!found) return;
+
+    if (completedTransfer.streaming && completedTransfer.tempFileHandle) {
+      // ── Streaming path ──────────────────────────────────────────────────
+      // Close the temp file first (must happen before any reads of it).
+      completedTransfer.tempFileHandle->close();
+      completedTransfer.tempFileHandle.reset();
+
+      // Bug 5: Partial-transfer guard.
+      // If the received byte count doesn't match what the sender declared,
+      // the temp file is corrupt — reject without running SHA-256 on garbage.
+      if (completedTransfer.totalSize > 0 &&
+          completedTransfer.receivedBytes != completedTransfer.totalSize) {
+        std::remove(completedTransfer.tempFilePath.c_str());
+        auto errCb = m_onError;
+        if (errCb) {
+          errCb(SignalingError::TransferFailed,
+                "WebRTC incomplete transfer: expected " +
+                std::to_string(completedTransfer.totalSize) + " bytes, got " +
+                std::to_string(completedTransfer.receivedBytes));
         }
-      } else {
-        std::string actualHash = computeSHA256(completedTransfer.data);
-        ok = completedTransfer.sha256Expected.empty() || actualHash == completedTransfer.sha256Expected;
-        if (!ok && m_onError) m_onError(SignalingError::IntegrityCheckFailed, "WebRTC Checksum mismatch (memory)");
-        if (ok && m_onTransferComplete) m_onTransferComplete(transferId, completedTransfer.filename, completedTransfer.data, ok);
+        return;
+      }
+
+      // Bug 4: Move SHA-256 + rename off the signaling thread into a worker.
+      // The message loop must never block on multi-second file I/O.
+      std::thread([this, completedTransfer]() mutable {
+        // ── SHA-256 verification ─────────────────────────────────────────
+        bool ok = true;
+        if (!completedTransfer.sha256Expected.empty()) {
+          std::string actualHash = computeSHA256(completedTransfer.tempFilePath);
+          ok = (actualHash == completedTransfer.sha256Expected);
+        }
+
+        if (!ok) {
+          std::remove(completedTransfer.tempFilePath.c_str());
+          auto errCb = m_onError;
+          if (errCb) errCb(SignalingError::IntegrityCheckFailed,
+                           "WebRTC SHA-256 mismatch (streaming)");
+          return;
+        }
+
+        // ── Bug 3: Rename temp file to final path ────────────────────────
+        // Sanitize filename to prevent path traversal.
+        std::string safeName = completedTransfer.filename;
+        for (char& c : safeName) {
+          if (c == '/' || c == '\\') c = '_';
+        }
+        if (safeName.empty() || safeName == "." || safeName == "..") {
+          safeName = "received_file";
+        }
+
+        // Collision-safe final path: append _2, _3, ... if target exists.
+        std::string basePath = m_downloadPath + "/" + safeName;
+        std::string finalPath = basePath;
+        {
+          int suffix = 1;
+          while (std::ifstream(finalPath).good()) {
+            auto dot = safeName.rfind('.');
+            std::string stem = (dot != std::string::npos)
+                                   ? safeName.substr(0, dot)
+                                   : safeName;
+            std::string ext =
+                (dot != std::string::npos) ? safeName.substr(dot) : "";
+            finalPath = m_downloadPath + "/" + stem + "_" +
+                        std::to_string(++suffix) + ext;
+          }
+        }
+
+        // std::rename is atomic on same filesystem; falls back to copy+delete
+        // on cross-device moves (e.g., tmp on tmpfs, download on ext4).
+        bool renamed = (std::rename(completedTransfer.tempFilePath.c_str(),
+                                    finalPath.c_str()) == 0);
+        if (!renamed) {
+          // Cross-filesystem fallback: binary copy then delete source.
+          std::ifstream src(completedTransfer.tempFilePath,
+                            std::ios::binary);
+          std::ofstream dst(finalPath, std::ios::binary | std::ios::trunc);
+          if (src && dst) {
+            dst << src.rdbuf();
+            src.close();
+            dst.close();
+            if (!dst.fail()) {
+              std::remove(completedTransfer.tempFilePath.c_str());
+              renamed = true;
+            }
+          }
+        }
+
+        if (!renamed) {
+          std::remove(completedTransfer.tempFilePath.c_str());
+          auto errCb = m_onError;
+          if (errCb) errCb(SignalingError::TransferFailed,
+                           "WebRTC: failed to move temp file to: " + finalPath);
+          return;
+        }
+
+        // Deliver the final path as the "filename" so TeleportBridge can
+        // display it and update the transfer state correctly.
+        auto completeCb = m_onTransferComplete;
+        if (completeCb) {
+          completeCb(completedTransfer.transferId, finalPath, {}, true);
+        }
+      }).detach();
+
+    } else {
+      // ── In-memory path (small files < STREAM_THRESHOLD) ─────────────────
+      // Bug 5: Sanity check for in-memory path too.
+      if (completedTransfer.totalSize > 0 &&
+          completedTransfer.data.size() != completedTransfer.totalSize) {
+        auto errCb = m_onError;
+        if (errCb) {
+          errCb(SignalingError::TransferFailed,
+                "WebRTC incomplete in-memory transfer: expected " +
+                std::to_string(completedTransfer.totalSize) + " bytes, got " +
+                std::to_string(completedTransfer.data.size()));
+        }
+        return;
+      }
+
+      std::string actualHash = computeSHA256(completedTransfer.data);
+      bool ok = completedTransfer.sha256Expected.empty() ||
+                actualHash == completedTransfer.sha256Expected;
+      if (!ok) {
+        auto errCb = m_onError;
+        if (errCb) errCb(SignalingError::IntegrityCheckFailed,
+                         "WebRTC SHA-256 mismatch (in-memory)");
+        return;
+      }
+      auto completeCb = m_onTransferComplete;
+      if (completeCb) {
+        completeCb(completedTransfer.transferId, completedTransfer.filename,
+                   completedTransfer.data, true);
       }
     }
   } else if (type == "resume-ready") {

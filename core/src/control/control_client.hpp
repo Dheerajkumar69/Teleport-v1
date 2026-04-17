@@ -66,7 +66,9 @@ private:
     Result<void> perform_handshake();
     Result<void> send_file_list(const std::vector<FileInfo>& files);
     Result<void> wait_for_acceptance(uint16_t& data_port);
-    Result<void> transfer_files(const std::vector<FileInfo>& files);
+    Result<void> transfer_files_parallel(const Device& target, uint16_t data_port,
+                                          const std::vector<FileInfo>& files);
+    Result<void> transfer_files(const std::vector<FileInfo>& files);  // Legacy single-stream
     Result<void> transfer_file(const FileInfo& file);
     
     Config m_config;

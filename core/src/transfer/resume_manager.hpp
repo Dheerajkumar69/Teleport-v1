@@ -12,7 +12,7 @@
 #include <vector>
 #include <fstream>
 #include <cstdint>
-#include "transfer/parallel_transfer.hpp"
+#include "transfer/parallel_transfer.hpp"  // ChunkTracker for resume support
 
 namespace teleport {
 

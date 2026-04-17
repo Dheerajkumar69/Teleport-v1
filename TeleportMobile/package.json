@@ -12,11 +12,14 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/netinfo": "^11.5.2",
+    "expo": "~52.0.0",
     "react": "18.3.1",
     "react-native": "0.76.0",
+    "react-native-blob-util": "^0.21.2",
     "react-native-document-picker": "^9.3.1",
     "react-native-haptic-feedback": "^2.3.3",
-    "react-native-svg": "^15.15.1"
+    "react-native-svg": "^15.15.1",
+    "react-native-webrtc": "^124.0.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

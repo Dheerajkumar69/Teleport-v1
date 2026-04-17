@@ -27,6 +27,11 @@ set(CORE_SOURCES
     ${TELEPORT_CORE_DIR}/src/transfer/stream_pool.cpp
     ${TELEPORT_CORE_DIR}/src/transfer/transfer_manager.cpp
     ${TELEPORT_CORE_DIR}/src/platform/pal_android.cpp
+    ${TELEPORT_CORE_DIR}/src/platform/pal.cpp
+    ${TELEPORT_CORE_DIR}/src/platform/wifi_direct_android.cpp
+    ${TELEPORT_CORE_DIR}/src/platform/hotspot_android.cpp
+    ${TELEPORT_CORE_DIR}/src/pairing/third_party/qrcodegen.cpp
+    ${TELEPORT_CORE_DIR}/src/pairing/qr_pairing.cpp
     ${TELEPORT_CORE_DIR}/src/utils/logger.cpp
     ${TELEPORT_CORE_DIR}/src/utils/uuid.cpp
     ${TELEPORT_CORE_DIR}/src/utils/sanitize.cpp

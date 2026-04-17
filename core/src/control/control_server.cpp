@@ -4,6 +4,7 @@
  */
 
 #include "control_server.hpp"
+#include "transfer/parallel_transfer.hpp"
 #include "utils/logger.hpp"
 #include "utils/uuid.hpp"
 #include "utils/sanitize.hpp"
@@ -257,21 +258,61 @@ void ControlServer::handle_connection(std::unique_ptr<pal::TcpSocket> client) {
                 goto cleanup;
             }
             
-            // Accept transfer
-            // TODO: Create data channel on separate port
+            // Accept transfer — bind a dedicated parallel-data port.
+            // Bind BEFORE sending Accept so we are guaranteed to be
+            // listening by the time the client tries to connect streams.
+            pal::SocketOptions data_opts;
+            data_opts.reuse_addr = true;
+            auto data_listen = pal::create_tcp_socket(data_opts);
+            if (!data_listen || !data_listen->is_valid()) {
+                AcceptRejectMessage reject_msg;
+                reject_msg.accepted = false;
+                reject_msg.reason   = "Server out of resources";
+                writer.write(ControlMessage::reject(reject_msg));
+                final_error = TELEPORT_ERROR_SOCKET_CREATE;
+                goto cleanup;
+            }
+
+            // Port 0 → OS picks an ephemeral port (guaranteed free).
+            auto bind_result = data_listen->bind(0);
+            if (!bind_result) {
+                AcceptRejectMessage reject_msg;
+                reject_msg.accepted = false;
+                reject_msg.reason   = "Could not bind data port";
+                writer.write(ControlMessage::reject(reject_msg));
+                final_error = TELEPORT_ERROR_SOCKET_BIND;
+                goto cleanup;
+            }
+            auto listen_result = data_listen->listen(ParallelTransfer::DEFAULT_STREAMS + 4);
+            if (!listen_result) {
+                AcceptRejectMessage reject_msg;
+                reject_msg.accepted = false;
+                reject_msg.reason   = "Could not listen on data port";
+                writer.write(ControlMessage::reject(reject_msg));
+                final_error = TELEPORT_ERROR_SOCKET_BIND;
+                goto cleanup;
+            }
+
+            uint16_t data_port = data_listen->local_address().port;
+            LOG_INFO("Parallel data port: ", data_port);
+
             AcceptRejectMessage accept_msg;
-            accept_msg.accepted = true;
-            accept_msg.data_port = m_port;  // Use same port for now
+            accept_msg.accepted  = true;
+            accept_msg.data_port = data_port;
             auto accept_result = writer.write(ControlMessage::accept(accept_msg));
             if (!accept_result) {
                 final_error = static_cast<TeleportError>(accept_result.error().code);
                 goto cleanup;
             }
-            
-            LOG_INFO("Transfer accepted, receiving ", transfer.files.size(), " files");
-            
-            // Receive files
-            auto recv_result = receive_files(*client, transfer.files, accept_msg.data_port);
+
+            LOG_INFO("Transfer accepted, receiving ", transfer.files.size(), " files in parallel");
+
+            // Receive files via ParallelTransfer.
+            // Pass the control socket so receive_files_parallel can drain the
+            // START control message and send the final Complete ack.
+            auto recv_result = receive_files_parallel(
+                *client, *data_listen, transfer.files
+            );
             if (!recv_result) {
                 final_error = static_cast<TeleportError>(recv_result.error().code);
                 goto cleanup;
@@ -335,6 +376,103 @@ Result<void> ControlServer::perform_handshake(pal::TcpSocket& socket, Device& se
     }
     
     LOG_INFO("Handshake complete with ", sender.name);
+    return ok();
+}
+
+Result<void> ControlServer::receive_files_parallel(
+    pal::TcpSocket& control_sock,
+    pal::TcpSocket& data_listen,
+    const std::vector<FileInfo>& files
+) {
+    // ---- Step 1: drain the START message from the control socket ----
+    // The client sends START on the control connection *before* connecting
+    // any data streams.  We must read it here to keep the control socket
+    // in a clean state and avoid a protocol mismatch.
+    {
+        MessageReader ctrl_reader(control_sock);
+        auto start_result = ctrl_reader.read();
+        if (!start_result) {
+            return start_result.error();
+        }
+        if (start_result.value().type != ControlMessageType::Start) {
+            return make_error(TELEPORT_ERROR_PROTOCOL,
+                              "Expected START before parallel data streams");
+        }
+    }
+
+    // ---- Step 2: configure ParallelTransfer ----
+    ParallelTransfer::Config pt_cfg;
+    pt_cfg.num_streams         = ParallelTransfer::DEFAULT_STREAMS;
+    pt_cfg.chunk_size          = m_config.chunk_size;
+    pt_cfg.connect_timeout_ms  = 10000;
+    pt_cfg.transfer_timeout_ms = 30000;
+
+    ParallelTransfer pt(pt_cfg);
+
+    // Wire progress callback
+    pt.set_progress_callback([this](const ParallelTransfer::Stats& s) {
+        TransferStats ts;
+        ts.bytes_total       = s.bytes_total;
+        ts.bytes_transferred = s.bytes_received;
+        ts.speed_bps         = s.speed_bps;
+        ts.eta_seconds       = s.eta_seconds;
+        ts.start_time        = s.start_time;
+        if (m_on_progress) {
+            m_on_progress(ts);
+        }
+    });
+
+    // ---- Step 3: accept N incoming streams ----
+    auto accept_result = pt.accept(data_listen);
+    if (!accept_result) {
+        return accept_result.error();
+    }
+
+    // ---- Step 4: receive each file ----
+    uint32_t files_completed = 0;
+    uint64_t bytes_total     = 0;
+
+    for (const auto& file : files) {
+        // Sanitize output filename (path traversal defence)
+        std::string safe_name = sanitize_filename(file.name);
+        if (safe_name.empty() || safe_name == "unnamed") {
+            safe_name = "file_" + std::to_string(file.id);
+        }
+        if (file.name != safe_name) {
+            LOG_WARN("Sanitized filename '", file.name, "' -> '", safe_name, "'");
+        }
+
+        std::string output_path = m_output_dir + "/" + safe_name;
+        LOG_INFO("Parallel receiving: ", safe_name, " (", file.size, " bytes)");
+
+        auto recv_result = pt.receive_file(output_path, file.id, file.size, {});
+        if (!recv_result) {
+            return recv_result.error();
+        }
+
+        files_completed++;
+        bytes_total += file.size;
+        LOG_INFO("Parallel received: ", safe_name);
+    }
+
+    pt.close();
+
+    LOG_INFO("Parallel transfer complete: ", files_completed, " files, ", bytes_total, " bytes");
+
+    // ---- Step 5: send Complete ack over the control socket ----
+    {
+        MessageWriter ctrl_writer(control_sock);
+        CompleteMessage complete;
+        complete.success          = true;
+        complete.files_transferred = files_completed;
+        complete.bytes_transferred = bytes_total;
+        ctrl_writer.write(ControlMessage::complete(complete));
+    }
+
+    if (m_on_complete) {
+        m_on_complete(TELEPORT_OK);
+    }
+
     return ok();
 }
 

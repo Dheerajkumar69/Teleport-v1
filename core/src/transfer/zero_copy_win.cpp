@@ -174,34 +174,5 @@ uint64_t get_zero_copy_max_size() {
 
 } // namespace teleport
 
-#else
+#endif // _WIN32
 
-// Stub for non-Windows
-namespace teleport {
-
-Result<uint64_t> send_file_zero_copy(
-    pal::TcpSocket& socket,
-    pal::File& file,
-    uint64_t offset,
-    uint64_t length
-) {
-    return make_error(TELEPORT_ERROR_NOT_SUPPORTED, "Zero-copy not implemented");
-}
-
-Result<uint64_t> send_chunk_zero_copy(
-    pal::TcpSocket& socket,
-    pal::File& file,
-    uint32_t file_id,
-    uint32_t chunk_id,
-    uint64_t offset,
-    uint32_t size
-) {
-    return make_error(TELEPORT_ERROR_NOT_SUPPORTED, "Zero-copy not implemented");
-}
-
-bool is_zero_copy_available() { return false; }
-uint64_t get_zero_copy_max_size() { return 0; }
-
-} // namespace teleport
-
-#endif
