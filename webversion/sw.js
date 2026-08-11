@@ -1,15 +1,19 @@
 /**
- * Teleport ServiceWorker - Offline Support
+ * Teleport ServiceWorker - Offline Support + Update Detection
  * Caches app shell for offline functionality
+ * Notifies clients when a new version is available.
  */
 
-const CACHE_NAME = 'teleport-v5';
+const CACHE_NAME = 'teleport-v6';
+// NOTE: Bump CACHE_NAME above when releasing a new version.
+// index.html reads this value via a regex so all files stay in sync.
 const APP_SCOPE = self.registration.scope;
 const ROOT_URL = new URL('./', APP_SCOPE).toString();
 const OFFLINE_URL = new URL('index.html', APP_SCOPE).toString();
 const STATIC_ASSETS = [
     ROOT_URL,
     OFFLINE_URL,
+    new URL('version.js', APP_SCOPE).toString(),
     new URL('teleport-webrtc.js', APP_SCOPE).toString(),
     new URL('app-lovable.js', APP_SCOPE).toString(),
     new URL('streamsaver.min.js', APP_SCOPE).toString(),
@@ -37,7 +41,7 @@ self.addEventListener('install', (event) => {
     );
 });
 
-// Activate - clean up old caches
+// Activate - clean up old caches and notify clients of update
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((cacheNames) => {
@@ -46,6 +50,11 @@ self.addEventListener('activate', (event) => {
                     .filter((name) => name !== CACHE_NAME)
                     .map((name) => caches.delete(name))
             );
+        }).then(() => {
+            // Notify all open clients that a new version is ready
+            return self.clients.matchAll().then((clients) => {
+                clients.forEach((client) => client.postMessage({ type: 'SW_UPDATED', version: CACHE_NAME }));
+            });
         }).then(() => self.clients.claim())
     );
 });
@@ -99,7 +108,7 @@ self.addEventListener('fetch', (event) => {
                     return (await caches.match(OFFLINE_URL)) || (await caches.match(ROOT_URL));
                 }
 
-                return Response.error();
+                return new Response(null, { status: 503, statusText: 'Service Unavailable' });
             })
     );
 });
@@ -111,4 +120,4 @@ self.addEventListener('message', (event) => {
     }
 });
 
-console.log('🚀 Teleport ServiceWorker loaded');
+console.log('Teleport ServiceWorker ' + CACHE_NAME + ' loaded');

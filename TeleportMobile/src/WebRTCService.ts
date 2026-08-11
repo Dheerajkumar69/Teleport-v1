@@ -84,9 +84,10 @@ export type TransferResult = {
 // CONSTANTS
 // ============================================================================
 
-const CHUNK_SMALL  = 16  * 1024;   // 16 KB for files < 50 MB
-const CHUNK_LARGE  = 256 * 1024;   // 256 KB for files >= 50 MB
-const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
+const CHUNK_SMALL    = 16  * 1024;        // 16 KB for files < 100 MB
+const CHUNK_MEDIUM  = 256 * 1024;        // 256 KB for files 100–500 MB
+const CHUNK_LARGE   = 1024 * 1024;       // 1 MB for files 500 MB–2 GB
+const CHUNK_HUGE    = 4   * 1024 * 1024;  // 4 MB for files >= 2 GB
 
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;  // 16 MB pause threshold
 const LOW_BUFFER_BYTES = 1  * 1024 * 1024;  // 1 MB resume threshold
@@ -117,7 +118,10 @@ function genId(): string {
   return 'rn_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36);
 }
 function selectChunkSize(fileSize: number): number {
-  return fileSize >= LARGE_FILE_THRESHOLD ? CHUNK_LARGE : CHUNK_SMALL;
+  if (fileSize < 100 * 1024 * 1024) return CHUNK_SMALL;    // <100 MB  → 16 KB
+  if (fileSize < 500 * 1024 * 1024) return CHUNK_MEDIUM;   // 100–500 MB → 256 KB
+  if (fileSize < 2 * 1024 * 1024 * 1024) return CHUNK_LARGE; // 500 MB–2 GB → 1 MB
+  return CHUNK_HUGE;                                         // ≥2 GB → 4 MB
 }
 
 // ============================================================================

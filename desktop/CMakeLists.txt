@@ -54,7 +54,10 @@ set(DESKTOP_COMMON_HEADERS
 # WINDOWS BUILD (DirectX 11 + Win32)
 # ============================================================================
 if(WIN32)
-    find_package(OpenSSL QUIET)
+    # OpenSSL is REQUIRED on Windows — same as Linux.
+    # Without it, wss:// signaling is impossible and all relay traffic
+    # is sent in plaintext. Fail the build loudly rather than silently.
+    find_package(OpenSSL REQUIRED)
 
     set(IMGUI_WIN32_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
@@ -67,6 +70,7 @@ if(WIN32)
         src/platform/Sound_win32.cpp
         src/WebSignalingClient.cpp
         src/NativeWebRTCClient.cpp
+        src/RelayResumeManager.cpp
     )
 
     set(DESKTOP_WIN_HEADERS
@@ -107,8 +111,13 @@ if(WIN32)
             OpenSSL::SSL
             OpenSSL::Crypto
         )
+        target_compile_definitions(TeleportUI PRIVATE USE_OPENSSL)
     else()
-        message(WARNING "OpenSSL not found for Windows desktop build; wss signaling support will be disabled.")
+        # This branch should be unreachable now that REQUIRED is set above.
+        # Kept for belt-and-suspenders in case someone overrides the find.
+        message(FATAL_ERROR
+            "OpenSSL is required for wss:// signaling support. "
+            "Install OpenSSL dev libraries and re-run cmake.")
     endif()
 
     target_compile_definitions(TeleportUI PRIVATE
@@ -118,9 +127,6 @@ if(WIN32)
         NOMINMAX
     )
 
-    if(OpenSSL_FOUND)
-        target_compile_definitions(TeleportUI PRIVATE USE_OPENSSL)
-    endif()
 
     set_target_properties(TeleportUI PROPERTIES
         VS_DPI_AWARE "PerMonitor"
@@ -158,6 +164,7 @@ elseif(UNIX AND NOT APPLE)
         src/platform/Sound_linux.cpp
         src/WebSignalingClient.cpp
         src/NativeWebRTCClient.cpp
+        src/RelayResumeManager.cpp
     )
 
     set(DESKTOP_LINUX_HEADERS

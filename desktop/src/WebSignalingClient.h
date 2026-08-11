@@ -29,6 +29,7 @@
 #include <thread>
 #include <vector>
 #include "NativeWebRTCClient.h"
+#include "RelayResumeManager.h"
 
 namespace teleport {
 
@@ -143,6 +144,9 @@ struct RelayTransfer {
   std::string tempFilePath;                        // .__tmp_<transferId> during reception
   std::string finalFilePath;                       // destination after successful verify
   std::shared_ptr<std::ofstream> tempFileHandle;  // file handle while streaming
+
+  // Resume checkpointing: next byte count at which we persist to disk
+  size_t nextPersistAt = 0;
 };
 
 struct RelayVerificationResult {
@@ -306,6 +310,12 @@ private:
   // DataChannel Handlers
   void handleWebRTCControlMessage(const std::string &fromId, const std::string &message);
   void handleWebRTCChunk(const std::string &fromId, const uint8_t *data, size_t size);
+
+  // Relay resume helpers
+  void sendRelayResumeRequest(const std::string &toPeerId,
+                              const std::string &transferId,
+                              size_t resumeOffset);
+  void announceReconnectHints();
   
   RelayVerificationResult waitForRelayVerification(const std::string &transferId,
                                                    int timeoutMs);
@@ -395,6 +405,7 @@ private:
   // ============ Socket Handle ============
   int m_socket = -1;
   std::string m_downloadPath;
+  std::unique_ptr<RelayResumeManager> m_resumeManager;
   bool m_useTLS = false;
   void *m_sslContext = nullptr; // OpenSSL SSL_CTX*
   void *m_ssl = nullptr;        // OpenSSL SSL*

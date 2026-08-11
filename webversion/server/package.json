@@ -4,7 +4,11 @@
   "description": "WebRTC signaling server for Teleport web app",
   "main": "signaling.js",
   "scripts": {
-    "start": "node signaling.js"
+    "start": "node signaling.js",
+    "test": "node __tests__/unit.test.js && node __tests__/integration.test.js",
+    "test:unit": "node __tests__/unit.test.js",
+    "test:integration": "node __tests__/integration.test.js",
+    "test:load": "node __tests__/load.test.js"
   },
   "engines": {
     "node": ">=18.0.0"

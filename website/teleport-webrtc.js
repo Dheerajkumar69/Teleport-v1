@@ -514,6 +514,15 @@ class TeleportWebRTC {
                 await this.importPeerPublicKey(fromPeerId, publicKey);
             }
 
+            // Close any existing peer connection before creating a new one.
+            if (this.peers.has(fromPeerId)) {
+                const oldPc = this.peers.get(fromPeerId);
+                if (oldPc && typeof oldPc.close === 'function' && oldPc.signalingState !== 'closed') {
+                    console.warn(`[WebRTC] Closing stale connection to peer ${fromPeerId} before accepting new offer`);
+                    try { oldPc.close(); } catch (e) {}
+                }
+            }
+
             const pc = new RTCPeerConnection(this.rtcConfig);
             this.peers.set(fromPeerId, pc);
 
@@ -582,7 +591,7 @@ class TeleportWebRTC {
 
     // ==================== DATA CHANNEL ====================
 
-    handleDataChannelMessage(peerId, data) {
+    async handleDataChannelMessage(peerId, data) {
         if (typeof data === 'string') {
             const msg = JSON.parse(data);
 
@@ -591,7 +600,8 @@ class TeleportWebRTC {
                     metadata: msg,
                     chunks: [],
                     received: 0,
-                    startTime: Date.now()
+                    startTime: Date.now(),
+                    encrypted: this.sharedSecrets.has(peerId) && this.encryptionEnabled,
                 });
                 this.activeTransfers.set(msg.transferId, {
                     paused: false,
@@ -613,7 +623,27 @@ class TeleportWebRTC {
             const view = new DataView(data);
             const decoder = new TextDecoder();
             const transferId = decoder.decode(new Uint8Array(data, 0, 36));
-            const chunkData = new Uint8Array(data, 36);
+            const existingTransfer = this.incomingChunks.get(transferId);
+
+            let chunkData;
+            if (existingTransfer && existingTransfer.encrypted) {
+                // Encrypted format: [36B transferId][12B IV][encrypted data]
+                if (data.byteLength < 36 + 12) {
+                    console.warn('[DataChannel] Encrypted chunk too short, dropping');
+                    return;
+                }
+                const iv = new Uint8Array(data, 36, 12);
+                const encryptedData = new Uint8Array(data, 48);
+                try {
+                    chunkData = new Uint8Array(await this.decryptData(peerId, encryptedData, iv));
+                } catch (e) {
+                    console.error('[DataChannel] Decryption failed:', e.message);
+                    return;
+                }
+            } else {
+                // Plaintext format: [36B transferId][raw data]
+                chunkData = new Uint8Array(data, 36);
+            }
 
             const transfer = this.incomingChunks.get(transferId);
             const state = this.activeTransfers.get(transferId);
@@ -667,10 +697,19 @@ class TeleportWebRTC {
         const blob = new Blob([combined], { type: transfer.metadata.mimeType || 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
 
-        // Preserve folder structure in filename
-        let filename = transfer.metadata.filename;
+        // Preserve folder structure in filename (with sanitization)
+        let filename;
+        try {
+            filename = this.sanitizeFilename(transfer.metadata.filename);
+        } catch (e) {
+            filename = 'received_file';
+        }
         if (state?.relativePath) {
-            filename = state.relativePath;
+            try {
+                filename = this.sanitizeFilename(state.relativePath);
+            } catch (e) {
+                // Keep the sanitized filename above
+            }
         }
 
         const a = document.createElement('a');
@@ -772,6 +811,38 @@ class TeleportWebRTC {
     }
 
     // ==================== FILE SIZE CHECK ====================
+
+    // ==================== FILENAME SANITIZATION ====================
+
+    sanitizeFilename(filename) {
+        if (typeof filename !== 'string' || filename.length === 0) {
+            throw new Error('Empty or non-string filename');
+        }
+        // Strip null bytes and control characters
+        let name = filename.replace(/[\x00-\x1f\x7f]/g, '');
+        // Reject path separators (path-traversal guard)
+        if (name.includes('/') || name.includes('\\')) {
+            throw new Error(`Filename contains path separator: ${filename}`);
+        }
+        // Reject dot sequences
+        if (name === '.' || name === '..') {
+            throw new Error(`Filename is a dot sequence: ${filename}`);
+        }
+        // Replace Windows-illegal characters
+        name = name.replace(/[<>:"|?*]/g, '_');
+        // Trim leading/trailing spaces and dots
+        name = name.replace(/^[. ]+|[. ]+$/g, '');
+        if (name.length === 0) {
+            throw new Error(`Filename reduced to empty after sanitization: ${filename}`);
+        }
+        // Length guard
+        if (name.length > 240) {
+            const ext = name.lastIndexOf('.');
+            const extension = ext !== -1 ? name.slice(ext) : '';
+            name = name.slice(0, 240 - extension.length) + extension;
+        }
+        return name;
+    }
 
     checkFileSizes(files) {
         const largeFiles = [];
@@ -959,11 +1030,28 @@ class TeleportWebRTC {
 
                     const chunk = value.slice(i, i + this.CHUNK_SIZE);
 
+                    // Encrypt chunk if shared key exists for this peer
+                    let packet;
                     const encoder = new TextEncoder();
                     const idBytes = encoder.encode(transferId);
-                    const packet = new Uint8Array(36 + chunk.length);
-                    packet.set(idBytes, 0);
-                    packet.set(chunk, 36);
+                    const targetPeerId = Array.from(this.dataChannels.keys())[0];
+                    if (targetPeerId && this.sharedSecrets.has(targetPeerId) && this.encryptionEnabled) {
+                        const { encrypted, data: encData, iv } = await this.encryptData(targetPeerId, chunk);
+                        if (encrypted) {
+                            packet = new Uint8Array(36 + 12 + encData.byteLength);
+                            packet.set(idBytes, 0);
+                            packet.set(iv, 36);
+                            packet.set(new Uint8Array(encData), 48);
+                        } else {
+                            packet = new Uint8Array(36 + chunk.length);
+                            packet.set(idBytes, 0);
+                            packet.set(chunk, 36);
+                        }
+                    } else {
+                        packet = new Uint8Array(36 + chunk.length);
+                        packet.set(idBytes, 0);
+                        packet.set(chunk, 36);
+                    }
 
                     while (dc.bufferedAmount > this.MAX_BUFFER_SIZE) {
                         await new Promise(r => setTimeout(r, 10));

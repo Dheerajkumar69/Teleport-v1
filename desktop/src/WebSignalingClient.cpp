@@ -698,6 +698,15 @@ bool WebSignalingClient::connectInternal() {
   int port = useTLS ? 443 : 80;
 
 #ifndef USE_OPENSSL
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPILE-TIME SECURITY GUARD
+// USE_OPENSSL is not defined.  This binary cannot connect to wss:// endpoints.
+// All relay signaling will be unencrypted.  This is acceptable ONLY for local
+// development over a trusted LAN.  Do NOT ship this build to end users.
+// ─────────────────────────────────────────────────────────────────────────────
+#pragma message("[SECURITY] Building WebSignalingClient without TLS. "\
+               "wss:// is disabled; all signaling is PLAINTEXT. "\
+               "Set USE_OPENSSL or install OpenSSL to enable TLS.")
   if (useTLS) {
     m_state = ConnectionState::Failed;
     if (m_onError) {
@@ -707,6 +716,29 @@ bool WebSignalingClient::connectInternal() {
     return false;
   }
 #endif
+
+  // ─── Runtime plaintext warning ──────────────────────────────────────────
+  // If we reach here with useTLS == false, the connection is UNENCRYPTED.
+  // Emit a loud warning so it appears in every ops log, even if no UI is
+  // attached. This is NEVER silent.
+  if (!useTLS) {
+    fputs("[TELEPORT SECURITY WARNING] Connecting over PLAINTEXT ws://. "
+          "All signaling and relay transfers are UNENCRYPTED. "
+          "Configure a wss:// URL in production.\n", stderr);
+    fflush(stderr);
+    // Also deliver through the error callback at severity None so the UI
+    // can surface a visible banner (non-fatal — LAN use is intentional).
+    OnErrorCallback warnCb;
+    {
+      std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+      warnCb = m_onError;
+    }
+    if (warnCb) {
+      warnCb(SignalingError::None,
+             "SECURITY: Signaling over plaintext ws://. "
+             "Relay transfers will be unencrypted.");
+    }
+  }
 
   size_t pathStart = url.find('/');
   if (pathStart != std::string::npos) {
@@ -904,6 +936,10 @@ bool WebSignalingClient::connectInternal() {
     std::lock_guard<std::mutex> cbLock(m_callbackMutex);
     m_onConnected();
   }
+
+  // Announce any transfers that were interrupted before the last disconnect.
+  // This lets the remote browser peer know the desktop is ready to resume.
+  announceReconnectHints();
 
   return true;
 }
@@ -1628,6 +1664,52 @@ void WebSignalingClient::handleMessage(const std::string &message) {
       }
     }
 
+    // ── Resume check ──────────────────────────────────────────────────────
+    // If we have a sidecar for this transferId AND the temp file still exists
+    // with some data, reply with relay-resume-request instead of starting from
+    // scratch.  The browser will then slice the File from the resume offset.
+    if (m_resumeManager) {
+      RelayResumeState saved;
+      if (m_resumeManager->load(transferId, saved) &&
+          saved.receivedBytes > 0 &&
+          !saved.tempFilePath.empty()) {
+        // Verify the temp file is still present
+        std::ifstream probe(saved.tempFilePath, std::ios::binary | std::ios::ate);
+        if (probe.is_open() && static_cast<size_t>(probe.tellg()) == saved.receivedBytes) {
+          probe.close();
+          // Restore in-memory state from disk
+          transfer.streaming       = saved.streaming;
+          transfer.tempFilePath    = saved.tempFilePath;
+          transfer.receivedBytes   = saved.receivedBytes;
+          transfer.sha256Expected  = transfer.sha256Expected.empty()
+                                         ? saved.sha256Expected
+                                         : transfer.sha256Expected;
+          transfer.nextPersistAt   = saved.receivedBytes +
+                                         RelayResumeManager::PERSIST_INTERVAL_BYTES;
+          if (transfer.streaming) {
+            transfer.tempFileHandle = std::make_shared<std::ofstream>(
+                transfer.tempFilePath,
+                std::ios::binary | std::ios::app); // append!
+          }
+          if (!transfer.tempFileHandle || !transfer.tempFileHandle->is_open()) {
+            // Can't reopen — fall through to fresh start
+            transfer.streaming     = false;
+            transfer.tempFileHandle.reset();
+            transfer.receivedBytes = 0;
+            transfer.nextPersistAt = 0;
+          } else {
+            // State successfully restored — tell the browser to resume
+            std::lock_guard<std::mutex> lock(m_transfersMutex);
+            m_incomingTransfers[transferId] = transfer;
+            sendRelayResumeRequest(transfer.fromPeerId, transferId,
+                                   transfer.receivedBytes);
+            return;
+          }
+        }
+      }
+    }
+    // ── End resume check ──────────────────────────────────────────────────
+
     std::lock_guard<std::mutex> lock(m_transfersMutex);
     m_incomingTransfers[transferId] = transfer;
   } else if (type == "relay-chunk") {
@@ -1676,17 +1758,36 @@ void WebSignalingClient::handleMessage(const std::string &message) {
                 // Disk write error
                 it->second.tempFileHandle->close();
                 std::remove(it->second.tempFilePath.c_str());
+                if (m_resumeManager) m_resumeManager->remove(it->second.transferId);
                 m_incomingTransfers.erase(it);
                 pendingError = SignalingError::TransferFailed;
                 pendingErrorMessage = "Disk write failed during streaming";
               } else {
                 it->second.receivedBytes += chunk.size();
                 it->second.lastActivity = std::chrono::steady_clock::now();
-                progress.transferId = it->second.transferId;
-                progress.filename = it->second.filename;
-                progress.totalBytes = it->second.totalSize;
+
+                // Durable checkpoint every PERSIST_INTERVAL_BYTES
+                if (m_resumeManager &&
+                    it->second.receivedBytes >= it->second.nextPersistAt) {
+                  RelayResumeState snap;
+                  snap.transferId     = it->second.transferId;
+                  snap.fromPeerId     = it->second.fromPeerId;
+                  snap.filename       = it->second.filename;
+                  snap.totalSize      = it->second.totalSize;
+                  snap.receivedBytes  = it->second.receivedBytes;
+                  snap.sha256Expected = it->second.sha256Expected;
+                  snap.tempFilePath   = it->second.tempFilePath;
+                  snap.streaming      = it->second.streaming;
+                  m_resumeManager->save(snap);
+                  it->second.nextPersistAt = it->second.receivedBytes +
+                                            RelayResumeManager::PERSIST_INTERVAL_BYTES;
+                }
+
+                progress.transferId      = it->second.transferId;
+                progress.filename        = it->second.filename;
+                progress.totalBytes      = it->second.totalSize;
                 progress.transferredBytes = it->second.receivedBytes;
-                progress.state = TransferState::InProgress;
+                progress.state           = TransferState::InProgress;
                 emitProgress = true;
               }
             } else {
@@ -1779,7 +1880,8 @@ void WebSignalingClient::handleMessage(const std::string &message) {
           }
 
           if (verified) {
-            // Move temp file to final destination (best-effort rename)
+            // Move temp file to final destination — then delete the sidecar.
+            if (m_resumeManager) m_resumeManager->remove(transferId);
             std::string safeName = it->second.filename;
             // Sanitize: strip path components and dangerous chars
             {
@@ -1934,6 +2036,11 @@ void WebSignalingClient::handleMessage(const std::string &message) {
     result.reason = JsonGetStringField(message, "reason");
     if (result.reason.empty()) {
       result.reason = "relay-cancelled";
+    }
+
+    // Clean up any persisted sidecar for this cancelled transfer
+    if (m_resumeManager) {
+      m_resumeManager->remove(transferId);
     }
 
     {
@@ -2944,10 +3051,67 @@ std::vector<TransferProgress> WebSignalingClient::getAllTransfers() const {
 
 void WebSignalingClient::setDownloadPath(const std::string &path) {
   m_downloadPath = path;
+  // Initialise the resume manager whenever the download path is (re)configured.
+  // State dir is hidden inside the download folder so it follows the same
+  // filesystem permissions as the received files themselves.
+  if (!path.empty()) {
+    m_resumeManager = std::make_unique<RelayResumeManager>(path + "/.relay_state");
+  } else {
+    m_resumeManager.reset();
+  }
 }
 
 std::string WebSignalingClient::getDownloadPath() const {
   return m_downloadPath;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Relay Resume Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Send a relay-resume-request to the remote browser peer.
+ * The browser will seek its File reader to @p resumeOffset and re-enter
+ * the sendFileViaRelay pipeline from that byte position.
+ */
+void WebSignalingClient::sendRelayResumeRequest(const std::string &toPeerId,
+                                                const std::string &transferId,
+                                                size_t resumeOffset) {
+  if (toPeerId.empty() || transferId.empty()) return;
+
+  std::ostringstream msg;
+  msg << "{\"type\":\"relay-resume-request\",\"to\":\""
+      << JsonEscape(toPeerId) << "\",\"transferId\":\""
+      << JsonEscape(transferId) << "\",\"resumeOffset\":"
+      << resumeOffset << "}";
+  sendMessage(msg.str());
+}
+
+/**
+ * Called once after every successful WebSocket (re)connect.
+ * Scans the resume-state directory for interrupted transfers whose temp
+ * files still exist, then sends a relay-reconnect-hint to the originating
+ * peer so it knows the desktop is ready to accept a resume relay-start.
+ *
+ * The browser MUST still re-initiate with relay-start (containing the same
+ * transferId).  This hint is advisory \u2014 if the browser has already moved on
+ * or the peer is no longer in the room the hint is silently dropped by the
+ * signaling server.
+ */
+void WebSignalingClient::announceReconnectHints() {
+  if (!m_resumeManager) return;
+
+  const auto pending = m_resumeManager->listPending();
+  for (const auto &state : pending) {
+    if (state.fromPeerId.empty() || state.transferId.empty()) continue;
+
+    std::ostringstream msg;
+    msg << "{\"type\":\"relay-reconnect-hint\",\"to\":\""
+        << JsonEscape(state.fromPeerId) << "\",\"transferId\":\""
+        << JsonEscape(state.transferId) << "\",\"resumeOffset\":"
+        << state.receivedBytes << "}";
+    sendMessage(msg.str());
+  }
 }
 
 } // namespace teleport
